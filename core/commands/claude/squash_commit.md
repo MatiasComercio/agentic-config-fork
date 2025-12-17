@@ -1,5 +1,5 @@
 ---
-description: Generate semantic commit message for squashed HEAD commit
+description: Generate standardized Conventional Commit message for squashed commits
 argument-hint: [target]
 project-agnostic: true
 allowed-tools:
@@ -7,9 +7,9 @@ allowed-tools:
   - Read
 ---
 
-# Semantic Commit Message Generator
+# Squash Commit Message Generator
 
-Generates and applies a semantic versioning commit message to an already-squashed HEAD commit.
+Generates standardized Conventional Commits extended format message for squashed commits.
 
 **CRITICAL**: This command assumes squashing has ALREADY been performed. It only generates and amends the commit message.
 
@@ -104,171 +104,182 @@ echo "Resolved target: $TARGET_REF ($TARGET_HASH)"
 
 ### Step 2: Context Gathering
 
-#### 2.1 Analyze Current HEAD Commit
+#### 2.1 Analyze Git Diff File-by-File
 ```bash
-echo "Current HEAD commit:"
-echo "===================="
-git -C "$ROOT" log -1 --format="Title: %s%nBody:%n%b"
+echo "=========================================="
+echo "FILE-BY-FILE DIFF ANALYSIS"
+echo "=========================================="
 echo ""
 
-# Extract current commit components
-CURRENT_TITLE=$(git -C "$ROOT" log -1 --format='%s')
-CURRENT_BODY=$(git -C "$ROOT" log -1 --format='%b')
+# Get list of changed files
+CHANGED_FILES=$(git -C "$ROOT" diff --name-only "$TARGET_REF..HEAD")
 
-echo "Analyzing existing commit message..."
-# Check if already follows conventional commits format
-if echo "$CURRENT_TITLE" | grep -Eq '^[a-z]+(\([a-z/]+\))?: '; then
-  echo "Note: Current commit already follows conventional format"
-fi
-echo ""
+# For each file, show summary of changes
+for file in $CHANGED_FILES; do
+  echo "--- $file ---"
+  # Show stat for this file
+  git -C "$ROOT" diff --stat "$TARGET_REF..HEAD" -- "$file" | tail -1
+  # Show first few lines of actual diff for context
+  git -C "$ROOT" diff "$TARGET_REF..HEAD" -- "$file" | head -30
+  echo ""
+done
 ```
 
-#### 2.2 Analyze Changes vs Base Branch
+#### 2.2 Read Git Log for Context
 ```bash
-echo "Files changed vs $TARGET_REF:"
-git -C "$ROOT" diff --stat "$TARGET_REF..HEAD"
+echo "=========================================="
+echo "GIT LOG (commits being squashed)"
+echo "=========================================="
 echo ""
 
-# Store changed files for scope derivation
-CHANGED_FILES=$(git -C "$ROOT" diff --name-only "$TARGET_REF..HEAD")
-FILE_STATS=$(git -C "$ROOT" diff --stat "$TARGET_REF..HEAD")
+# Show all commits from target to HEAD
+git -C "$ROOT" log --oneline "$TARGET_REF..HEAD"
+echo ""
 
-# Count total changes
+# Show detailed log with messages
+echo "Detailed commit messages:"
+echo "--------------------------"
+git -C "$ROOT" log --format="commit %h%nAuthor: %an%nDate: %ad%n%n%s%n%b%n---" "$TARGET_REF..HEAD"
+echo ""
+
+# Store commit hashes for "Squashed commits:" section
+SQUASHED_COMMITS=$(git -C "$ROOT" log --oneline "$TARGET_REF..HEAD")
 COMMITS_AHEAD=$(git -C "$ROOT" rev-list --count "$TARGET_REF..HEAD")
+
 if [ "$COMMITS_AHEAD" -eq 0 ]; then
   echo "WARNING: No commits ahead of $TARGET_REF. Branch may be up-to-date."
 fi
 ```
 
-#### 2.3 Read CHANGELOG for Context (if exists)
+#### 2.3 Analyze File Statistics
 ```bash
-# Check for CHANGELOG.md
-CWD_FROM_ROOT=${PWD#$ROOT/}
-CHANGELOG_PATH="$CWD_FROM_ROOT/CHANGELOG.md"
+echo "=========================================="
+echo "CHANGE STATISTICS"
+echo "=========================================="
+echo ""
 
-if git -C "$ROOT" ls-files "$CHANGELOG_PATH" | grep -q .; then
-  echo "Reading CHANGELOG for version context..."
-  git -C "$ROOT" show "HEAD:$CHANGELOG_PATH" | head -50
-  echo ""
-fi
+# Overall stats
+git -C "$ROOT" diff --stat "$TARGET_REF..HEAD"
+echo ""
+
+# Count by file type
+echo "Files by type:"
+git -C "$ROOT" diff --name-only "$TARGET_REF..HEAD" | sed 's/.*\.//' | sort | uniq -c | sort -rn
+echo ""
 ```
 
 ---
 
-### Step 3: Semantic Commit Message Generation
+### Step 3: Generate Commit Message
 
-**INSTRUCTION**: Generate a semantic commit message following Conventional Commits extended rules.
+**INSTRUCTION**: Generate a standardized Conventional Commits extended format message.
 
-#### 3.1 Analyze Existing Message
-- Parse `CURRENT_TITLE` and `CURRENT_BODY`
-- Extract any existing type/scope if present
-- Identify intent from message content
-- Use as baseline for semantic message generation
-
-#### 3.2 Commit Message Structure
+#### 3.1 Title Format (50 char max)
 ```
-<type>(<scope>): <short description>
-
-<body - detailed changes>
-
-<footer - breaking changes, refs, etc>
+<type>(<scope>): <description>
 ```
 
-#### 3.3 Type Classification
+**Type Classification** (analyze diff to determine):
 
-Analyze current commit message and modified files to determine primary type:
+| Type | Description | When to Use |
+|------|-------------|-------------|
+| `feat` | New feature | Adding new functionality |
+| `fix` | Bug fix | Correcting broken behavior |
+| `docs` | Documentation | README, comments, docstrings |
+| `style` | Formatting | No code logic change |
+| `refactor` | Code restructuring | No behavior change |
+| `perf` | Performance | Optimization improvements |
+| `test` | Tests | Adding/fixing tests |
+| `chore` | Maintenance | Build, deps, tooling |
+| `build` | Build system | Webpack, vite, etc. |
+| `ci` | CI/CD | GitHub Actions, etc. |
 
-| Type | Description | Version Impact |
-|------|-------------|----------------|
-| `feat` | New feature | MINOR bump |
-| `fix` | Bug fix | PATCH bump |
-| `docs` | Documentation only | None |
-| `style` | Formatting, no code change | None |
-| `refactor` | Code restructuring, no behavior change | None |
-| `perf` | Performance improvement | PATCH bump |
-| `test` | Adding/fixing tests | None |
-| `chore` | Build process, tooling | None |
-| `build` | Build system changes | None |
-| `ci` | CI configuration | None |
+**Scope Derivation**:
+- Extract from common path in modified files
+- Use `/` for nested scopes (e.g., `api/auth`)
+- Omit if changes span unrelated areas
 
-#### 3.4 Scope Derivation
+**Breaking Changes**:
+- Add `!` after scope: `feat(api)!: description`
 
-Extract scope from modified file paths (`CHANGED_FILES`):
+#### 3.2 Body Format
+Structure the body with these sections as applicable:
 
-Derive scope from modified file paths. Use most specific common path segment. Combine with `/` for nested scopes (e.g., `api/auth`, `ui/dashboard`). Omit if changes span unrelated areas.
-
-**Scope Rules**:
-- Use most specific common path segment
-- Combine with `/` for nested scopes
-- Omit if changes span too many unrelated areas
-- Consider existing scope in `CURRENT_TITLE` if applicable
-
-#### 3.5 Breaking Changes Detection
-
-Search current commit message (`CURRENT_TITLE` + `CURRENT_BODY`) for:
-- `BREAKING CHANGE:` or `BREAKING-CHANGE:` in body/footer
-- Significant API changes mentioned
-- Database schema modifications
-- Major behavior changes
-
-If found: Add exclamation mark after type, before colon (example: feat(api)!: description)
-
-#### 3.6 Body Construction
-
-**Include**:
-- High-level summary (1-3 sentences)
-- Key changes grouped by category
-- File paths for critical changes
-- Technical specifics (function names, table names, etc.)
-- Preserve important details from `CURRENT_BODY` if relevant
-
-**Format**:
 ```
-This <type> <summary of what was done>.
+## Added
+- New feature or file added (path/to/file)
 
-Key changes:
-- Category 1: specific change (affected file/component)
-- Category 2: another change (details)
+## Changed
+- Modified behavior or refactored code (path/to/file)
 
-Modified files: N
+## Fixed
+- Bug fix description (path/to/file)
+
+## Removed
+- Deleted feature or file (path/to/file)
 ```
 
-#### 3.7 Footer Construction
+**Rules**:
+- Only include sections with actual changes
+- Each bullet should reference the affected file/component
+- Be specific about what changed, not just "updated X"
 
-**Include if applicable**:
-- `BREAKING CHANGE: <description>` (if breaking changes exist)
-- `Fixes: #<issue-number>` or `Closes: #<issue-number>` (if parseable from commit message)
-- `Refs: specs/path/to/spec.md` (if spec files modified, extracted from `CHANGED_FILES`)
-- `Generated with [Claude Code](https://claude.ai/code)`
-- `Co-Authored-By: Claude <noreply@anthropic.com>`
+#### 3.3 Footer Format
+```
+Squashed commits:
+- <hash> <original message>
+- <hash> <original message>
+
+Generated with [Claude Code](https://claude.ai/code)
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Additional Footer Items** (if applicable):
+- `BREAKING CHANGE: <description>`
+- `Fixes: #<issue-number>`
+- `Closes: #<issue-number>`
+- `Refs: <spec-path>`
 
 ---
 
 ### Step 4: Generate Commit Message Preview
 
-**INSTRUCTION**: Use gathered context to generate the semantic commit message.
+**INSTRUCTION**: Use the gathered context to generate the complete message.
 
 **Process**:
-1. Analyze existing commit message (`CURRENT_TITLE` + `CURRENT_BODY`)
-2. Extract any existing conventional commit components
-3. Classify primary type (feat, fix, refactor, etc.) from changes
-4. Derive scope from modified file paths (`CHANGED_FILES`)
-5. Detect breaking changes from message content
-6. Construct body with key changes
-7. Add footer with references (specs, attribution)
+1. Analyze git diff file-by-file for change types
+2. Read git log for original commit messages
+3. Determine primary type from changes
+4. Derive scope from file paths
+5. Write title (max 50 chars)
+6. Construct body with Added/Changed/Fixed/Removed sections
+7. Build footer with squashed commits list
 
 **Output Format**:
 ```
 ==========================================
-CURRENT COMMIT MESSAGE:
+PROPOSED COMMIT MESSAGE:
 ==========================================
-[Current HEAD commit message]
-==========================================
+<type>(<scope>): <description>
 
-==========================================
-PROPOSED SEMANTIC MESSAGE:
-==========================================
-[Generated semantic commit message]
+## Added
+- ...
+
+## Changed
+- ...
+
+## Fixed
+- ...
+
+## Removed
+- ...
+
+Squashed commits:
+- <hash> <message>
+- <hash> <message>
+
+Generated with [Claude Code](https://claude.ai/code)
+Co-Authored-By: Claude <noreply@anthropic.com>
 ==========================================
 ```
 
@@ -276,16 +287,16 @@ PROPOSED SEMANTIC MESSAGE:
 
 ### Step 5: User Confirmation
 
-**INSTRUCTION**: Show both current and proposed commit messages, then ask for confirmation.
+**INSTRUCTION**: Show proposed commit message and ask for confirmation.
 
 **Ask user**:
-1. "Does this semantic commit message accurately reflect the changes?"
+1. "Does this commit message accurately reflect the changes?"
 2. "Would you like to amend the commit with this message? (yes/no/edit)"
 
 **Options**:
 - `yes`: Proceed with amending the commit
 - `no`: Abort without changes
-- `edit`: Allow user to modify the commit message before amending
+- `edit`: Allow user to modify the message before amending
 
 ---
 
@@ -297,19 +308,19 @@ PROPOSED SEMANTIC MESSAGE:
 echo "Amending HEAD commit with semantic message..."
 echo ""
 
-# Store the semantic commit message
-COMMIT_MSG="[GENERATED_COMMIT_MESSAGE_HERE]"
-
-# Amend the current HEAD commit
-git -C "$ROOT" commit --amend -m "$COMMIT_MSG"
+# Store the semantic commit message (use heredoc for multi-line)
+git -C "$ROOT" commit --amend -m "$(cat <<'EOF'
+[GENERATED_COMMIT_MESSAGE_HERE]
+EOF
+)"
 
 echo "Commit amended successfully."
 ```
 
 **Safety Note**:
 - Only amends HEAD commit (no rebase involved)
-- Safer than squash rebase as it modifies only message, not history structure
-- Still requires force-push if commit was already pushed
+- Modifies only message, not history structure
+- Requires force-push if commit was already pushed
 
 ---
 
@@ -356,7 +367,7 @@ echo "=========================================="
 - Check for uncommitted changes
 - Verify HEAD commit exists
 - Confirm target branch exists
-- Show current vs proposed message preview
+- Show proposed message preview
 - Require user confirmation
 - Warn about force-push requirement if needed
 
@@ -369,11 +380,6 @@ If branch is up-to-date with target:
 - WARNING: "No commits ahead of $TARGET_REF. Branch may be up-to-date."
 - Proceed anyway (user may want to improve existing commit message)
 
-### Already Semantic Format
-If current commit already follows conventional commits:
-- Note: "Current commit already follows conventional format"
-- Still generate improved version based on file analysis
-
 ### Invalid Target Reference
 If target cannot be resolved:
 - ERROR: "Cannot resolve target '<target>'"
@@ -382,39 +388,31 @@ If target cannot be resolved:
 
 ---
 
-## Design Decisions
+## Example Output
 
-1. **Post-Squash Operation**
-   - Assumes squash has ALREADY been performed before command execution
-   - Only generates and amends commit message
-   - Simpler workflow: no rebase, no conflict resolution
-   - Safer: modifies only message, not commit structure
+For a branch with changes to API and tests:
 
-2. **Message-Only Amendment**
-   - Uses `git commit --amend` (not rebase)
-   - Preserves all file changes exactly
-   - Only updates commit message metadata
-   - Minimal risk compared to history rewriting
+```
+feat(api): add user authentication endpoints
 
-3. **Default Target: origin/main**
-   - Defaults to `origin/main` for simplicity and predictability
-   - Accepts commit hash, branch name, or full remote ref (e.g., `origin/develop`)
-   - Always fetches `main` first, then fetches specified branch if different
-   - Resolves target to commit hash for consistent diff behavior
+## Added
+- POST /auth/login endpoint (src/api/auth.ts)
+- POST /auth/register endpoint (src/api/auth.ts)
+- JWT token validation middleware (src/middleware/auth.ts)
 
-4. **Semantic Commit Analysis**
-   - Analyzes existing commit message as baseline
-   - Respects existing conventional format if present
-   - Uses file path analysis as primary signal for type/scope
-   - Incorporate CHANGELOG context for version-aware messages
+## Changed
+- Updated route configuration (src/routes/index.ts)
+- Extended User model with password hash (src/models/user.ts)
 
-5. **Safety-First Approach**
-   - Multiple validation checkpoints
-   - Clear current vs proposed message preview
-   - Explicit warnings about force-push if already pushed
-   - No destructive operations (only message amendment)
+## Fixed
+- Corrected error handling in validation (src/utils/validate.ts)
 
-6. **Context-Aware Scope**
-   - Derive scope from modified files vs target branch
-   - Keep scope concise but meaningful
-   - Preserve existing scope if appropriate
+Squashed commits:
+- abc123f feat: add login endpoint
+- def456a feat: add register endpoint
+- 789ghij fix: validation error handling
+- klm012n test: add auth tests
+
+Generated with [Claude Code](https://claude.ai/code)
+Co-Authored-By: Claude <noreply@anthropic.com>
+```

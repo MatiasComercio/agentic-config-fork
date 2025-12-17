@@ -212,10 +212,171 @@ Proceed with squash? (yes/no)
 3. Commit: `docs: mark {SECTION} as completed`
 4. Create backup: `{branch}-backup/{YYYY}/{MM}/{DD}/001`
 5. Soft reset to `BASE_BRANCH`
-6. Create squashed commit with comprehensive message
-7. If `VERSION`: create annotated tag
+6. **Generate Conventional Commit message** (see Phase 4B)
+7. Create squashed commit with generated message
+8. If `VERSION`: create annotated tag
 
 → Proceed to **Phase 5: Push Confirmation**
+
+## Phase 4B: Conventional Commit Message Generation
+
+Generate a standardized commit message following Conventional Commits extended format.
+
+### 4B.1 Analyze Changes
+
+```bash
+# Get full diff for analysis
+git diff {BASE_BRANCH}..HEAD --stat
+git diff {BASE_BRANCH}..HEAD --name-status
+```
+
+### 4B.2 Determine Commit Type
+
+Parse changed files and categorize by **primary change type**:
+
+| Type | When to Use |
+|------|-------------|
+| `feat` | New feature or capability added |
+| `fix` | Bug fix |
+| `docs` | Documentation only changes |
+| `chore` | Maintenance, deps, configs (no production code) |
+| `refactor` | Code restructuring without behavior change |
+| `test` | Adding or modifying tests |
+| `style` | Formatting, whitespace, linting |
+| `perf` | Performance improvements |
+| `build` | Build system or external dependencies |
+| `ci` | CI/CD configuration changes |
+
+**Selection Priority:**
+1. If ANY `feat` changes exist -> type = `feat`
+2. Else if ANY `fix` changes exist -> type = `fix`
+3. Else use dominant change type
+
+### 4B.3 Determine Scope
+
+Analyze changed file paths to identify scope:
+
+```bash
+# Get unique top-level directories/components
+git diff --name-only {BASE_BRANCH}..HEAD | cut -d'/' -f1-2 | sort -u
+```
+
+**Scope Rules:**
+- Single component modified -> use component name (e.g., `commands`, `skills`)
+- Multiple related components -> use parent (e.g., `core`)
+- Unrelated changes -> omit scope or use `release`
+- Version/release changes -> scope = `release` or version number
+
+### 4B.4 Generate Commit Title
+
+Format: `<type>(<scope>): <description>`
+
+**Description Rules:**
+- Imperative mood ("add" not "added")
+- Lowercase first letter
+- No period at end
+- Max 72 characters total
+- Summarize the main purpose
+
+**Examples:**
+- `feat(commands): add milestone validation workflow`
+- `fix(parser): handle empty input gracefully`
+- `docs(readme): update installation instructions`
+- `chore(deps): bump typescript to v5.3`
+
+### 4B.5 Generate Commit Body
+
+Structure the body with these sections (include only non-empty):
+
+```
+## Added
+- New feature 1
+- New feature 2
+
+## Changed
+- Modified behavior 1
+- Updated component 2
+
+## Fixed
+- Bug fix 1
+- Issue resolution 2
+
+## Removed
+- Deprecated item 1
+```
+
+**Content Generation:**
+1. Parse `git diff {BASE_BRANCH}..HEAD` file by file
+2. Categorize each file's changes:
+   - New files -> Added
+   - Modified files -> Changed (or Fixed if bug-related)
+   - Deleted files -> Removed
+3. Summarize meaningful changes (not every line)
+4. Reference file paths where helpful
+
+### 4B.6 Include Original Commits
+
+Append squashed commit references:
+
+```bash
+# Get original commit messages
+git log --oneline {BASE_BRANCH}..HEAD
+```
+
+Format as:
+```
+Squashed commits:
+- {sha7} {message}
+- {sha7} {message}
+- {sha7} {message}
+```
+
+### 4B.7 Complete Message Template
+
+```
+<type>(<scope>): <description>
+
+## Added
+- {additions}
+
+## Changed
+- {changes}
+
+## Fixed
+- {fixes}
+
+## Removed
+- {removals}
+
+Squashed commits:
+- {sha} {message}
+- {sha} {message}
+```
+
+### 4B.8 Commit Message Example
+
+```
+feat(milestone): add validation workflow with smart defaults
+
+## Added
+- Smart defaults resolution for all arguments
+- CHANGELOG consistency check
+- PROJECT_AGENTS.md validation
+- Push confirmation gate
+
+## Changed
+- Refactored argument parsing to support quoted strings
+- Updated backup branch naming format
+
+## Fixed
+- Backlog detection now searches multiple locations
+
+Squashed commits:
+- abc1234 feat: add milestone command scaffold
+- def5678 feat: implement backlog parsing
+- ghi9012 fix: handle missing changelog gracefully
+- jkl3456 docs: add usage examples
+```
 
 ### Path C: Backlog - INCOMPLETE (missing items)
 

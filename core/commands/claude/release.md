@@ -160,7 +160,7 @@ Choose (A/B):
 
 **On "A":**
 ```bash
-git merge {BRANCH} -m "Merge {BRANCH} (Release {VERSION})"
+git merge {BRANCH} -m "chore(release): merge {BRANCH} for {VERSION}"
 ```
 
 **On "B":** STOP - checkout back to {BRANCH}.

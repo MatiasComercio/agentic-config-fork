@@ -1,5 +1,5 @@
 ---
-description: Squash all commits since base into single commit, optionally re-tag
+description: Squash all commits since base into single commit with Conventional Commits format
 argument-hint: [base-ref] [tag]
 project-agnostic: true
 allowed-tools:
@@ -10,7 +10,7 @@ allowed-tools:
 
 # Squash Command
 
-Squash all commits since base reference into a single commit.
+Squash all commits since base reference into a single commit with standardized Conventional Commits message.
 
 ## Context Awareness
 
@@ -90,18 +90,85 @@ git tag -d $2
 git reset --soft <base>
 ```
 
-### 3. Create Squashed Commit
-Generate message from branch name (convert kebab-case to readable):
+### 3. Analyze Changes for Commit Message
+
+**Get diff for analysis:**
+```bash
+git diff <base>..HEAD --stat
+git diff <base>..HEAD --name-status
+```
+
+**Determine commit type from changes:**
+- `feat`: New files/features added
+- `fix`: Bug fixes (look for "fix" in original commits or test corrections)
+- `refactor`: Code restructuring without behavior change
+- `docs`: Documentation-only changes (*.md, comments)
+- `chore`: Build, config, tooling changes
+- `test`: Test-only changes
+
+**Determine scope from changed paths:**
+- Extract primary directory/component from changed files
+- Use most common parent directory as scope
+- Examples: `commands`, `skills`, `core`, `config`, `api`, `ui`
+
+**Get original commit messages:**
+```bash
+git log --format="- %s" <base>..HEAD
+```
+
+### 4. Generate Conventional Commit Message
+
+**Title format:** `<type>(<scope>): <description>`
+- Type: Determined from change analysis
+- Scope: Primary component/directory affected
+- Description: Concise summary (imperative mood, lowercase, no period)
+
+**Body format with sections (include only non-empty):**
+
+```
+## Added
+- New feature/file descriptions
+
+## Changed
+- Modifications to existing functionality
+
+## Fixed
+- Bug fixes and corrections
+
+## Removed
+- Deleted files/features
+
+Squashed commits:
+- Original commit 1
+- Original commit 2
+...
+```
+
+### 5. Create Squashed Commit
+
 ```bash
 git commit -m "$(cat <<'EOF'
-feat: [branch-name-as-title]
+<type>(<scope>): <description>
 
-Squashed [count] commits from [branch].
+## Added
+- [list if any]
+
+## Changed
+- [list if any]
+
+## Fixed
+- [list if any]
+
+## Removed
+- [list if any]
+
+Squashed commits:
+[original commit list]
 EOF
 )"
 ```
 
-### 4. Recreate Tag (if provided)
+### 6. Recreate Tag (if provided)
 ```bash
 git tag $2
 ```
@@ -111,6 +178,7 @@ git tag $2
 Show final state:
 ```bash
 git log --oneline <base>..HEAD
+git show --stat HEAD
 ```
 
 If tagged:
@@ -123,6 +191,8 @@ git tag -l --points-at HEAD
 ```
 Squash complete:
 - [count] commits -> 1 commit ([short hash])
+- Type: [commit type]
+- Scope: [scope]
 - Tag: [tag or "none"]
 - LOCAL ONLY - not pushed
 ```

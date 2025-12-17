@@ -97,15 +97,63 @@ git reset --soft $BASE
 
 ### 4. Create Squashed Commit
 
-Generate message from branch name:
+**Generate Conventional Commit message using git diff analysis:**
+
+#### Step 4.1: Analyze Changes Against Target
+```bash
+git diff --stat $1...HEAD
+git diff --name-only $1...HEAD
+```
+
+#### Step 4.2: Determine Commit Type and Scope
+Based on the diff analysis, determine:
+- **type**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`
+- **scope**: Primary affected area/module (from changed file paths)
+
+#### Step 4.3: Generate Structured Commit Message
+
+Use this format:
+```
+<type>(<scope>): <concise description from branch intent>
+
+## Summary
+- <bullet point summarizing key change 1>
+- <bullet point summarizing key change 2>
+- ...
+
+## Changes
+- <specific file/module change 1>
+- <specific file/module change 2>
+- ...
+
+## Squashed Commits
+<original commit list from git log --oneline $BASE..HEAD>
+```
+
+**Commit command:**
 ```bash
 git commit -m "$(cat <<'EOF'
-feat: [branch-name-as-title]
+<type>(<scope>): <description>
 
-Squashed [count] commits from [branch].
+## Summary
+<generated summary bullets>
+
+## Changes
+<generated change bullets>
+
+## Squashed Commits
+<list of squashed commits with hashes>
 EOF
 )"
 ```
+
+**Guidelines:**
+- Title line: max 72 characters, imperative mood
+- Derive type from dominant change category in diff
+- Derive scope from most affected directory/module
+- Summary: high-level "what and why" (2-4 bullets)
+- Changes: specific modifications (file-level)
+- Include all original commit hashes and messages
 
 ### 5. Perform Rebase
 ```bash

@@ -4,6 +4,19 @@ All notable changes to agentic-config.
 
 ## [Unreleased]
 
+## [0.1.5] - 2025-12-16
+
+### Added
+- Conventional Commits extended format for all commit-rewriting commands
+- `/milestone` Phase 4B for standardized commit message generation
+- `/squash`, `/squash_commit`, `/squash_and_rebase` now analyze git diff to generate structured messages
+- `/release` merge commits use Conventional Commits format
+- Git Commit Standards section in PROJECT_AGENTS.md
+
+### Changed
+- All squashed commits now include structured body (Added/Changed/Fixed/Removed sections)
+- Commit messages include "Squashed commits:" footer with original commit list
+
 ## [0.1.4] - 2025-12-16
 
 ### Added
