@@ -52,7 +52,11 @@ sync_self_hosted_commands() {
 
     if [[ ! -L "$dest" ]]; then
       missing+=("$cmd")
-      ln -sf "$src" "$dest"
+      if [[ "$INSTALL_MODE" == "copy" ]]; then
+        cp "$src" "$dest"
+      else
+        ln -sf "$src" "$dest"
+      fi
       echo "  ✓ $cmd.md (created)"
       ((synced++)) || true
     fi
@@ -193,16 +197,23 @@ if [[ ! -f "$TARGET_PATH/.agentic-config.json" ]]; then
 fi
 
 CURRENT_VERSION=$(check_version "$TARGET_PATH")
+INSTALL_MODE=$(get_install_mode "$TARGET_PATH")
 echo "Agentic Configuration Update"
 echo "   Current version: $CURRENT_VERSION"
 echo "   Latest version:  $LATEST_VERSION"
+echo "   Install mode:    $INSTALL_MODE"
 
 # Fix Codex symlink if needed (run even if versions match)
 if [[ -L "$TARGET_PATH/.codex/prompts/spec.md" ]]; then
   CURRENT_TARGET=$(readlink "$TARGET_PATH/.codex/prompts/spec.md")
   if [[ "$CURRENT_TARGET" == *"spec-command.md" ]]; then
     echo "Fixing Codex spec symlink..."
-    ln -sf "$REPO_ROOT/core/commands/codex/spec.md" "$TARGET_PATH/.codex/prompts/spec.md"
+    if [[ "$INSTALL_MODE" == "copy" ]]; then
+      rm -f "$TARGET_PATH/.codex/prompts/spec.md"
+      cp "$REPO_ROOT/core/commands/codex/spec.md" "$TARGET_PATH/.codex/prompts/spec.md"
+    else
+      ln -sf "$REPO_ROOT/core/commands/codex/spec.md" "$TARGET_PATH/.codex/prompts/spec.md"
+    fi
     echo "  ✓ Updated Codex symlink to use proper command file"
   fi
 fi
@@ -218,7 +229,11 @@ if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
 fi
 
 # Get project type from config
-PROJECT_TYPE=$(jq -r '.project_type' "$TARGET_PATH/.agentic-config.json")
+if command -v jq &>/dev/null; then
+  PROJECT_TYPE=$(jq -r '.project_type' "$TARGET_PATH/.agentic-config.json")
+else
+  PROJECT_TYPE=$(grep -o '"project_type"[[:space:]]*:[[:space:]]*"[^"]*"' "$TARGET_PATH/.agentic-config.json" | cut -d'"' -f4)
+fi
 TEMPLATE_DIR="$REPO_ROOT/templates/$PROJECT_TYPE"
 
 # Only run version update flow if there's actually a version change
@@ -285,20 +300,112 @@ if [[ "$CURRENT_VERSION" != "$LATEST_VERSION" ]]; then
       echo "Or manually merge changes from templates"
     fi
   fi
-
-  # Update version tracking
-  if [[ "$FORCE" == true || "$HAS_CONFIG_CHANGES" == false ]]; then
-    echo "Updating version tracking..."
-    jq --arg version "$LATEST_VERSION" \
-       --arg timestamp "$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)" \
-       '.version = $version | .updated_at = $timestamp' \
-       "$TARGET_PATH/.agentic-config.json" > "$TARGET_PATH/.agentic-config.json.tmp"
-    mv "$TARGET_PATH/.agentic-config.json.tmp" "$TARGET_PATH/.agentic-config.json"
-    echo "Version updated to $LATEST_VERSION"
-  fi
 fi
 
-# Install all commands from core
+# Handle copy mode updates
+if [[ "$INSTALL_MODE" == "copy" && "$CURRENT_VERSION" != "$LATEST_VERSION" ]]; then
+  echo ""
+  echo "Copy mode detected - backing up and updating copied assets..."
+
+  # Create backup directory
+  COPY_BACKUP_DIR="$TARGET_PATH/.agentic-config.copy-backup.$(date +%s)"
+  mkdir -p "$COPY_BACKUP_DIR"
+  echo "   Backup: $COPY_BACKUP_DIR"
+
+  # Backup all copied assets
+  BACKED_UP_ITEMS=()
+  if [[ -d "$TARGET_PATH/agents" && ! -L "$TARGET_PATH/agents" ]]; then
+    cp -r "$TARGET_PATH/agents" "$COPY_BACKUP_DIR/"
+    BACKED_UP_ITEMS+=("agents/")
+  fi
+
+  if [[ -d "$TARGET_PATH/.claude/commands" ]]; then
+    mkdir -p "$COPY_BACKUP_DIR/.claude/commands"
+    for cmd in "$TARGET_PATH/.claude/commands"/*.md; do
+      if [[ -f "$cmd" && ! -L "$cmd" ]]; then
+        cp "$cmd" "$COPY_BACKUP_DIR/.claude/commands/"
+        BACKED_UP_ITEMS+=(".claude/commands/$(basename "$cmd")")
+      fi
+    done
+  fi
+
+  if [[ -d "$TARGET_PATH/.claude/skills" ]]; then
+    mkdir -p "$COPY_BACKUP_DIR/.claude/skills"
+    for skill in "$TARGET_PATH/.claude/skills"/*; do
+      if [[ -d "$skill" && ! -L "$skill" ]]; then
+        cp -r "$skill" "$COPY_BACKUP_DIR/.claude/skills/"
+        BACKED_UP_ITEMS+=(".claude/skills/$(basename "$skill")")
+      fi
+    done
+  fi
+
+  if [[ -d "$TARGET_PATH/.claude/agents" ]]; then
+    mkdir -p "$COPY_BACKUP_DIR/.claude/agents"
+    for agent in "$TARGET_PATH/.claude/agents"/*.md; do
+      if [[ -f "$agent" && ! -L "$agent" ]]; then
+        cp "$agent" "$COPY_BACKUP_DIR/.claude/agents/"
+        BACKED_UP_ITEMS+=(".claude/agents/$(basename "$agent")")
+      fi
+    done
+  fi
+
+  echo "   Backed up ${#BACKED_UP_ITEMS[@]} item(s)"
+
+  # Replace with latest versions (with backup verification)
+  REPLACED_ITEMS=()
+  if [[ -d "$TARGET_PATH/agents" && ! -L "$TARGET_PATH/agents" ]]; then
+    # Verify backup was successful before deleting
+    if [[ -d "$COPY_BACKUP_DIR/agents" ]]; then
+      rm -rf "$TARGET_PATH/agents"
+      cp -r "$REPO_ROOT/core/agents" "$TARGET_PATH/agents"
+      REPLACED_ITEMS+=("agents/")
+    else
+      echo "   WARNING: Backup verification failed for agents/ - skipping replacement"
+    fi
+  fi
+
+  # Copy all commands
+  for cmd_file in "$REPO_ROOT/core/commands/claude/"*.md; do
+    cmd=$(basename "$cmd_file")
+    if [[ -f "$TARGET_PATH/.claude/commands/$cmd" && ! -L "$TARGET_PATH/.claude/commands/$cmd" ]]; then
+      cp "$cmd_file" "$TARGET_PATH/.claude/commands/$cmd"
+      REPLACED_ITEMS+=(".claude/commands/$cmd")
+    fi
+  done
+
+  # Copy all skills
+  for skill_dir in "$REPO_ROOT/core/skills/"*/; do
+    skill=$(basename "$skill_dir")
+    if [[ -d "$TARGET_PATH/.claude/skills/$skill" && ! -L "$TARGET_PATH/.claude/skills/$skill" ]]; then
+      # Verify backup exists before destructive operation
+      if [[ -d "$COPY_BACKUP_DIR/.claude/skills/$skill" ]]; then
+        rm -rf "$TARGET_PATH/.claude/skills/$skill"
+      else
+        echo "   WARNING: Backup verification failed for skill $skill - skipping replacement"
+        continue
+      fi
+      cp -r "$skill_dir" "$TARGET_PATH/.claude/skills/$skill"
+      REPLACED_ITEMS+=(".claude/skills/$skill")
+    fi
+  done
+
+  # Copy all agentic management agents
+  for agent_file in "$REPO_ROOT/core/agents/agentic-"*.md; do
+    agent=$(basename "$agent_file")
+    if [[ -f "$TARGET_PATH/.claude/agents/$agent" && ! -L "$TARGET_PATH/.claude/agents/$agent" ]]; then
+      cp "$agent_file" "$TARGET_PATH/.claude/agents/$agent"
+      REPLACED_ITEMS+=(".claude/agents/$agent")
+    fi
+  done
+
+  echo "   Replaced ${#REPLACED_ITEMS[@]} item(s) with latest versions"
+  echo ""
+  echo "IMPORTANT: Copy mode update complete"
+  echo "   Review changes and manually merge any customizations from backup"
+  echo "   Backup location: $COPY_BACKUP_DIR"
+fi
+
+# Install all commands from core (respect install_mode)
 echo ""
 echo "Installing commands..."
 echo "   Available: ${AVAILABLE_CMDS[*]}"
@@ -306,8 +413,13 @@ mkdir -p "$TARGET_PATH/.claude/commands"
 CMDS_INSTALLED=0
 for cmd in "${AVAILABLE_CMDS[@]}"; do
   if [[ -f "$REPO_ROOT/core/commands/claude/$cmd.md" ]]; then
-    if [[ ! -L "$TARGET_PATH/.claude/commands/$cmd.md" ]]; then
-      ln -sf "$REPO_ROOT/core/commands/claude/$cmd.md" "$TARGET_PATH/.claude/commands/$cmd.md"
+    # Check if command not yet installed (neither symlink nor file)
+    if [[ ! -e "$TARGET_PATH/.claude/commands/$cmd.md" ]]; then
+      if [[ "$INSTALL_MODE" == "copy" ]]; then
+        cp "$REPO_ROOT/core/commands/claude/$cmd.md" "$TARGET_PATH/.claude/commands/$cmd.md"
+      else
+        ln -sf "$REPO_ROOT/core/commands/claude/$cmd.md" "$TARGET_PATH/.claude/commands/$cmd.md"
+      fi
       echo "  ✓ $cmd.md"
       ((CMDS_INSTALLED++)) || true
     fi
@@ -315,7 +427,7 @@ for cmd in "${AVAILABLE_CMDS[@]}"; do
 done
 [[ $CMDS_INSTALLED -eq 0 ]] && echo "  (all commands already installed)"
 
-# Install all skills from core
+# Install all skills from core (respect install_mode)
 echo "Installing skills..."
 echo "   Available: ${AVAILABLE_SKILLS[*]}"
 mkdir -p "$TARGET_PATH/.claude/skills"
@@ -323,19 +435,28 @@ SKILLS_INSTALLED=0
 SKILLS_BACKUP_DIR=""
 for skill in "${AVAILABLE_SKILLS[@]}"; do
   if [[ -d "$REPO_ROOT/core/skills/$skill" ]]; then
-    if [[ ! -L "$TARGET_PATH/.claude/skills/$skill" ]]; then
-      # Backup existing dir (not symlink) before replacing to preserve local customizations
-      if [[ -d "$TARGET_PATH/.claude/skills/$skill" ]]; then
+    # Check if skill not yet installed (neither symlink nor directory)
+    if [[ ! -e "$TARGET_PATH/.claude/skills/$skill" ]]; then
+      if [[ "$INSTALL_MODE" == "copy" ]]; then
+        cp -r "$REPO_ROOT/core/skills/$skill" "$TARGET_PATH/.claude/skills/$skill"
+      else
+        ln -sf "$REPO_ROOT/core/skills/$skill" "$TARGET_PATH/.claude/skills/$skill"
+      fi
+      echo "  ✓ $skill"
+      ((SKILLS_INSTALLED++)) || true
+    elif [[ ! -L "$TARGET_PATH/.claude/skills/$skill" && -d "$TARGET_PATH/.claude/skills/$skill" ]]; then
+      # Existing directory (not symlink) - backup and replace for symlink mode only
+      if [[ "$INSTALL_MODE" != "copy" ]]; then
         if [[ -z "$SKILLS_BACKUP_DIR" ]]; then
           SKILLS_BACKUP_DIR="$TARGET_PATH/.agentic-config.backup.$(date +%s)/skills"
           mkdir -p "$SKILLS_BACKUP_DIR"
         fi
         mv "$TARGET_PATH/.claude/skills/$skill" "$SKILLS_BACKUP_DIR/$skill"
         echo "  ⚠ Backed up: $skill → $SKILLS_BACKUP_DIR/$skill"
+        ln -sf "$REPO_ROOT/core/skills/$skill" "$TARGET_PATH/.claude/skills/$skill"
+        echo "  ✓ $skill (converted to symlink)"
+        ((SKILLS_INSTALLED++)) || true
       fi
-      ln -sf "$REPO_ROOT/core/skills/$skill" "$TARGET_PATH/.claude/skills/$skill"
-      echo "  ✓ $skill"
-      ((SKILLS_INSTALLED++)) || true
     fi
   fi
 done
@@ -353,6 +474,29 @@ fi
 ORPHANS=$(cleanup_orphan_symlinks "$TARGET_PATH" ".claude/skills")
 if [[ $ORPHANS -gt 0 ]]; then
   echo "  Cleaned $ORPHANS orphan skill symlink(s)"
+fi
+
+# Update version tracking (only after all operations complete)
+if [[ "$CURRENT_VERSION" != "$LATEST_VERSION" ]]; then
+  if [[ "$FORCE" == true || "${HAS_CONFIG_CHANGES:-false}" == false ]]; then
+    echo "Updating version tracking..."
+    TIMESTAMP="$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
+    if command -v jq &>/dev/null; then
+      jq --arg version "$LATEST_VERSION" \
+         --arg timestamp "$TIMESTAMP" \
+         '.version = $version | .updated_at = $timestamp' \
+         "$TARGET_PATH/.agentic-config.json" > "$TARGET_PATH/.agentic-config.json.tmp"
+      mv "$TARGET_PATH/.agentic-config.json.tmp" "$TARGET_PATH/.agentic-config.json"
+    else
+      # Fallback: use sed for simple field replacement
+      sed -i.bak \
+        -e "s/\"version\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"version\": \"$LATEST_VERSION\"/" \
+        -e "s/\"updated_at\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"updated_at\": \"$TIMESTAMP\"/" \
+        "$TARGET_PATH/.agentic-config.json"
+      rm -f "$TARGET_PATH/.agentic-config.json.bak"
+    fi
+    echo "Version updated to $LATEST_VERSION"
+  fi
 fi
 
 echo ""
