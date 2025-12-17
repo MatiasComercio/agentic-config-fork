@@ -4,6 +4,8 @@ All notable changes to agentic-config.
 
 ## [Unreleased]
 
+## [0.1.10] - 2025-12-17
+
 ### Added
 
 - `--type-checker` and `--linter` CLI flags for `setup-config.sh` to specify Python tooling variants
