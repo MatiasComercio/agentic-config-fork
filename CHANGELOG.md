@@ -4,10 +4,14 @@ All notable changes to agentic-config.
 
 ## [Unreleased]
 
+## [0.1.12] - 2025-12-18
+
 ### Fixed
 
 - Renamed `low-priority` label to `priority: low` for consistency
 - `py-uv` alias now correctly maps to `python-uv` template in setup script (fixes #8)
+- Added `bun` alias for `ts-bun` template for consistency
+- Synced usage docs and error message to show same type format
 
 ## [0.1.11] - 2025-12-17
 
