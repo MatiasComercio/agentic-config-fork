@@ -4,6 +4,8 @@ All notable changes to agentic-config.
 
 ## [Unreleased]
 
+## [0.1.13] - 2025-12-26
+
 ### Added
 
 - `/po_spec` command for phased spec orchestration (multi-phase feature decomposition with DAG execution)
