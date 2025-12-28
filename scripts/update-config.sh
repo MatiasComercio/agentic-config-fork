@@ -113,6 +113,38 @@ sync_self_hosted_commands() {
   fi
 }
 
+# Sync all hook symlinks for self-hosted repo
+sync_self_hosted_hooks() {
+  local target="$1"
+
+  # Skip if target IS the repo root (prevents recursive symlinks)
+  if [[ "$(cd "$target" && pwd)" == "$REPO_ROOT" ]]; then
+    return 0
+  fi
+
+  local synced=0
+  local missing=()
+
+  echo "Self-hosted repo detected - syncing ALL hook symlinks..."
+
+  for hook_file in "$REPO_ROOT/core/hooks/pretooluse/"*.py; do
+    [[ ! -f "$hook_file" ]] && continue
+    local hook=$(basename "$hook_file")
+    local dest="$target/.claude/hooks/pretooluse/$hook"
+
+    if [[ ! -L "$dest" ]]; then
+      missing+=("$hook")
+      mkdir -p "$target/.claude/hooks/pretooluse"
+      local rel_target="../../../core/hooks/pretooluse/$hook"
+      (cd "$target/.claude/hooks/pretooluse" && ln -sf "$rel_target" "$hook")
+      echo "  ✓ $hook (created)"
+      ((synced++)) || true
+    fi
+  done
+
+  [[ $synced -eq 0 ]] && echo "  (all hooks already symlinked)"
+}
+
 # Skills: all directories in core/skills/
 discover_available_skills() {
   local skills=()
@@ -276,6 +308,7 @@ if is_self_hosted "$TARGET_PATH"; then
   # Clean up any invalid nested symlinks first
   cleanup_invalid_nested_symlinks "$TARGET_PATH"
   sync_self_hosted_commands "$TARGET_PATH"
+  sync_self_hosted_hooks "$TARGET_PATH"
 fi
 
 if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
@@ -524,6 +557,74 @@ for skill in "${AVAILABLE_SKILLS[@]}"; do
   fi
 done
 [[ $SKILLS_INSTALLED -eq 0 ]] && echo "  (all skills already installed)"
+
+# Install all hooks from core (respect install_mode)
+echo "Installing hooks..."
+mkdir -p "$TARGET_PATH/.claude/hooks/pretooluse"
+HOOKS_INSTALLED=0
+for hook_file in "$REPO_ROOT/core/hooks/pretooluse/"*.py; do
+  [[ ! -f "$hook_file" ]] && continue
+  hook=$(basename "$hook_file")
+  if [[ ! -e "$TARGET_PATH/.claude/hooks/pretooluse/$hook" ]]; then
+    if [[ "$INSTALL_MODE" == "copy" ]]; then
+      cp "$hook_file" "$TARGET_PATH/.claude/hooks/pretooluse/$hook"
+    else
+      rel_target="../../../core/hooks/pretooluse/$hook"
+      (cd "$TARGET_PATH/.claude/hooks/pretooluse" && ln -sf "$rel_target" "$hook")
+    fi
+    echo "  ✓ $hook"
+    ((HOOKS_INSTALLED++)) || true
+  fi
+done
+[[ $HOOKS_INSTALLED -eq 0 ]] && echo "  (all hooks already installed)"
+
+# Register hooks in .claude/settings.json (ensure dry-run-guard is configured)
+echo "Verifying hook registration in settings.json..."
+SETTINGS_FILE="$TARGET_PATH/.claude/settings.json"
+HOOK_CONFIG='{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --script .claude/hooks/pretooluse/dry-run-guard.py"
+          }
+        ]
+      }
+    ]
+  }
+}'
+
+HOOK_REGISTERED=false
+if [[ ! -f "$SETTINGS_FILE" ]]; then
+  # Create new settings.json with hook config
+  echo "$HOOK_CONFIG" > "$SETTINGS_FILE"
+  echo "  ✓ Created settings.json with hook registration"
+  HOOK_REGISTERED=true
+elif command -v jq &>/dev/null; then
+  # Check if hooks.PreToolUse already has dry-run-guard
+  if ! jq -e '.hooks.PreToolUse[]?.hooks[]? | select(.command | contains("dry-run-guard"))' "$SETTINGS_FILE" &>/dev/null; then
+    # Add our hook configuration
+    jq --argjson hook "$HOOK_CONFIG" '
+      .hooks = (.hooks // {}) |
+      .hooks.PreToolUse = ((.hooks.PreToolUse // []) + $hook.hooks.PreToolUse)
+    ' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+    echo "  ✓ Added dry-run-guard hook to settings.json"
+    HOOK_REGISTERED=true
+  else
+    echo "  (hook already registered)"
+  fi
+else
+  # No jq - check if we can detect the hook in the file
+  if ! grep -q "dry-run-guard" "$SETTINGS_FILE" 2>/dev/null; then
+    echo "  WARNING: Cannot verify hook registration (jq not available)"
+    echo "  Ensure dry-run-guard hook is registered in $SETTINGS_FILE"
+  else
+    echo "  (hook appears to be registered)"
+  fi
+fi
 
 # Clean up orphaned symlinks
 echo "Cleaning up orphaned symlinks..."

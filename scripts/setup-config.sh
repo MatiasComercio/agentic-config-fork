@@ -352,6 +352,61 @@ if [[ "$DRY_RUN" != true ]]; then
   fi
 fi
 
+# Install hooks
+echo "Installing hooks..."
+if [[ "$DRY_RUN" != true ]]; then
+  mkdir -p "$TARGET_PATH/.claude/hooks/pretooluse"
+  if [[ "$COPY_MODE" == true ]]; then
+    cp "$REPO_ROOT/core/hooks/pretooluse/dry-run-guard.py" "$TARGET_PATH/.claude/hooks/pretooluse/dry-run-guard.py"
+  else
+    ln -sf "$REPO_ROOT/core/hooks/pretooluse/dry-run-guard.py" "$TARGET_PATH/.claude/hooks/pretooluse/dry-run-guard.py"
+  fi
+fi
+
+# Register hooks in .claude/settings.json
+echo "Registering hooks in settings.json..."
+if [[ "$DRY_RUN" != true ]]; then
+  SETTINGS_FILE="$TARGET_PATH/.claude/settings.json"
+  HOOK_CONFIG='{
+    "hooks": {
+      "PreToolUse": [
+        {
+          "matcher": "Write|Edit|NotebookEdit|Bash",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "uv run --script .claude/hooks/pretooluse/dry-run-guard.py"
+            }
+          ]
+        }
+      ]
+    }
+  }'
+
+  if [[ ! -f "$SETTINGS_FILE" ]]; then
+    # Create new settings.json with hook config
+    echo "$HOOK_CONFIG" > "$SETTINGS_FILE"
+  elif command -v jq &>/dev/null; then
+    # Merge hook config into existing settings.json using jq
+    # Check if hooks.PreToolUse already exists and has dry-run-guard
+    if ! jq -e '.hooks.PreToolUse[]?.hooks[]? | select(.command | contains("dry-run-guard"))' "$SETTINGS_FILE" &>/dev/null; then
+      # Add our hook configuration
+      jq --argjson hook "$HOOK_CONFIG" '
+        .hooks = (.hooks // {}) |
+        .hooks.PreToolUse = ((.hooks.PreToolUse // []) + $hook.hooks.PreToolUse)
+      ' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+    fi
+  else
+    # No jq available - check if file is empty/minimal and overwrite, otherwise warn
+    if [[ $(wc -c < "$SETTINGS_FILE") -lt 10 ]]; then
+      echo "$HOOK_CONFIG" > "$SETTINGS_FILE"
+    else
+      echo "   WARNING: Cannot merge hooks into existing settings.json (jq not available)"
+      echo "   Add manually: $HOOK_CONFIG"
+    fi
+  fi
+fi
+
 # Install templates
 echo "Installing config templates ($PROJECT_TYPE)..."
 if [[ "$DRY_RUN" != true ]]; then

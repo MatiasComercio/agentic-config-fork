@@ -189,6 +189,17 @@ for skill in ../../core/skills/*; do
   (cd .claude/skills && ln -sf "../../core/skills/$name" "$name")
 done
 
+# Hooks - rebuild ALL from core
+mkdir -p .claude/hooks/pretooluse
+for hook in ../../core/hooks/pretooluse/*.py; do
+  [[ ! -f "$hook" ]] && continue
+  name=$(basename "$hook")
+  (cd .claude/hooks/pretooluse && ln -sf "../../../core/hooks/pretooluse/$name" "$name")
+done
+
+# settings.json - ensure hooks are registered
+# (update-config.sh handles this automatically)
+
 # Clean orphans
 for link in .claude/commands/*.md .claude/skills/*; do
   [[ -L "$link" && ! -e "$link" ]] && rm "$link"
@@ -198,6 +209,8 @@ done
 Report:
 - Commands rebuilt: N
 - Skills rebuilt: N
+- Hooks rebuilt: N
+- Settings.json: verified/updated
 - Orphans removed: N
 
 ### 6. Validation
