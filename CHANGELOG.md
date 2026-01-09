@@ -4,6 +4,8 @@ All notable changes to agentic-config.
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-01-09
+
 ### Added
 
 - `gh-assets-branch-mgmt` skill for managing GitHub assets branch (persistent image/video hosting in PRs)
