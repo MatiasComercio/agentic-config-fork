@@ -9,6 +9,9 @@ Thumbs.db
 *.swo
 *~
 
+# Claude settings backups
+.claude/settings.json.bak.*
+
 # Temporary files
 *.tmp
 *.bak
@@ -40,4 +43,3 @@ specs/
 
 # Invalid nested symlinks (artifacts from misconfigured setups)
 core/agents/agents
-core/skills/*/[!S]*
