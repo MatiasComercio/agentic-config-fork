@@ -29,10 +29,9 @@ Mandatory format for ALL swarm agent output files.
 After writing output file, agent MUST create signal:
 
 ```bash
-printf "path: %s\nsize: %s\nstatus: success\n" \
-    "{output_path}" \
-    "$(wc -c < {output_path} | tr -d ' ')" \
-    > {SESSION_DIR}/.signals/{NNN}-{name}.done
+uv run tools/signal.py "{SESSION_DIR}/.signals/{NNN}-{name}.done" \
+    --path "{output_path}" \
+    --status success
 ```
 
 ## Agent Return Value
