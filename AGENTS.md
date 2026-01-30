@@ -10,6 +10,33 @@
 - Type hints for all public functions, descriptive names, small pure functions
 - After edits: uv run ruff check --fix <file> && uv run pyright <file>
 
+## PEP 723 Scripts (Inline Dependencies)
+
+For scripts with `# /// script` metadata blocks, standard pyright fails because inline deps aren't in pyproject.toml.
+
+**Type check PEP 723 scripts:**
+```bash
+# Extract deps and run pyright in isolated env
+uvx --from pyright --with <dep1> --with <dep2> pyright <script.py>
+
+# Example for a typer+rich script:
+uvx --from pyright --with typer --with rich pyright tools/setup.py
+```
+
+**One-liner to auto-extract deps:**
+```bash
+script="path/to/script.py"
+deps=$(python3 -c "
+import re, tomllib
+with open('$script') as f: c = f.read()
+m = re.search(r'# /// script\n(.*?)\n# ///', c, re.DOTALL)
+if m:
+    t = '\n'.join(l.lstrip('# ') for l in m.group(1).split('\n'))
+    print(' '.join('--with ' + re.split(r'[<>=!]', d)[0] for d in tomllib.loads(t).get('dependencies', [])))
+")
+eval "uvx --from pyright $deps pyright $script"
+```
+
 ## Core Principles
 - Verify over assume
 - Failures first (lead with errors)
@@ -17,12 +44,30 @@
 - DO NOT OVERCOMPLICATE
 - DO NOT OVERSIMPLIFY
 
+## Skill Triggering Enforcement
+
+**MANDATORY** - No exceptions, no rationalization:
+
+- If even 1% chance a skill applies to the current task, you MUST invoke it
+- You do not have a choice. You cannot rationalize your way out.
+- When user explicitly requests a skill (e.g., "/mux", "/spec"), invoke it IMMEDIATELY
+- NEVER skip skill invocation to "save time" or because "I can handle it myself"
+- Skills exist because they encode specialized knowledge and workflows you lack
+
+**Violations:**
+- Describing what a skill would do instead of invoking it
+- Partially implementing skill behavior manually
+- Claiming the task is "too simple" for the skill
+
 ## Critical Rules
 - NEVER amend commits unless user says 'amend commit'
 - NEVER commit files in gitignored directories unless explicitly requested - DO NOT use git add -f to bypass .gitignore
 - Minimal changes; avoid ambiguity; no placeholders
 - Keep prompts concise; log costs
 - EFFICIENCY in application performance and user experience - REFLECT this in EVERY implementation
+- `/<command-or-skill-name>` is an explicit enforcement to INVOKE a skill or command, EVEN if you don't see it in your context.
+  - You MUST check if a command or skill with that name exists looking in .claude/skills/ and .claude/commands/ directories.
+  - If it exists, you MUST EXPLICITLY INVOKE it using the SKILL tool (e.g.: `Skill(skill="mux", args="...")`)
 
 ## /spec Workflow
 Reference agents/spec/{STAGE}.md for detailed instructions.
@@ -46,6 +91,21 @@ AGENTIC_GLOBAL="${AGENTIC_CONFIG_PATH:-${_agp:-$HOME/.agents/agentic-config}}"
 unset _agp
 source "$AGENTIC_GLOBAL/core/lib/spec-resolver.sh"
 ```
+
+## User Customizations
+
+User-side behavior customizations for skills/commands live in `$AGENTIC_GLOBAL/customization/`:
+
+```
+$AGENTIC_GLOBAL/customization/
+  <skill-name>/           # Per-skill customizations
+    <tool>.md             # Tool-specific output format
+  <command-name>/         # Per-command customizations (future)
+```
+
+- **NOT tracked in git** - user-local configuration
+- Skills check for customizations before execution
+- Example: `customization/gsuite/gcalendar.md` for calendar output format
 
 ## Git Workflow
 - Base branch: main (not master)

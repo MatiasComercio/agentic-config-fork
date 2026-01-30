@@ -4,6 +4,79 @@ All notable changes to agentic-config.
 
 ## [Unreleased]
 
+### Added
+
+- `gsuite` skill for Claude Code providing READ and WRITE access to Google Suite
+  - Multi-account authentication with account switching (similar to `gh auth status`/`gh auth switch`)
+  - Support for both enterprise (Workspace) and personal Google accounts
+  - Google Sheets API: read/write cells, batch operations, formulas, formatting
+  - Google Docs API: read/write content, tables, formatting, PDF export
+  - Google Slides API: read/write presentations, manage slides, text formatting
+  - Google Drive API: list files, share, permissions, directories, copy, comments with suggestions support
+  - Gmail API: list/read/send/draft messages, search with Gmail query syntax
+  - Google Calendar API: list/create/update/delete events, attendees, recurrence
+  - Google Tasks API: list/create/complete/delete tasks across task lists
+  - People API: contact search for recipient resolution in email workflows
+  - Account management: `gsuite auth status`, `gsuite auth add`, `gsuite auth switch`, `gsuite auth remove`
+  - Automated setup: `setup.py` for Google Cloud project configuration
+  - OAuth 2.0 flow with automatic token refresh for personal accounts
+  - Enterprise domain-wide delegation support for Workspace accounts
+  - Write operation confirmation (configurable via config.yml or --yes flag)
+  - Mandatory recipient resolution workflow (preferences -> People API -> confirm)
+  - Agent orchestrator pattern for parallel multi-operation handling
+  - PEP 723 self-contained CLI tools with inline dependency management
+  - User customization support via `$AGENTIC_GLOBAL/customization/gsuite/`
+  - CLI tools (11): auth.py, setup.py, sheets.py, docs.py, slides.py, drive.py, gmail.py, gcalendar.py, tasks.py, people.py, utils.py
+- `mux` skill for parallel research-to-deliverable orchestration (renamed from `swarm`)
+  - Progressive context management with signal-based completion
+  - `spy` command for real-time observation of running agents
+  - A2A (Agent-to-Agent) protocol support for external orchestration
+  - 10 agent definitions: researcher, auditor, consolidator, coordinator, writer, sentinel, monitor, proposer, spy, validators
+  - Comprehensive tooling: session, signal, verify, poll-signals, metrics, circuit-breaker
+  - Decomposes tasks into research subjects and focus areas
+  - Fan-out research with background agents
+  - Gap analysis against codebase
+  - Context consolidation for large outputs
+  - High-tier coordinator for deliverable synthesis
+  - Voice updates at phase transitions
+  - Context priming protocol (Phase 0) for all agents
+  - Pre-flight validation (Phase 0.5) with parameter checking
+  - 3-phase automated protocol enforcement via audit-protocol.py
+  - Distributed tracing with OpenTelemetry-style trace ID propagation
+  - Two-stage review (spec compliance validator + code quality validator)
+  - Circuit breaker pattern with auto-reset for failure recovery
+  - Role/Goal/Backstory persona format
+  - Progressive context management with YAML frontmatter (70% token reduction)
+  - Artifact versioning with diff tool for refinement loops
+  - Observability platform with metrics collection and dashboard
+  - 10 tools: session.py, signal.py, verify.py, poll-signals.py, extract-summary.py, audit-protocol.py, circuit-breaker.py, parse-agent-metadata.py, version-diff.py, metrics.py
+  - A2A protocol stack: agent-card.json, task-manager.py, server.py, auth.py, client.py
+  - Observability dashboard: index.html, server.py
+- Mandatory skill/command invocation rule in AGENTS.md and all project templates
+- `cpc` skill - Copy text to clipboard via pbcopy (macOS)
+- `gdate.py` utility - Date parsing and formatting for calendar operations
+- Mermaid diagram support for gsuite Drive uploads
+- PII compliance pre-commit hook (`core/hooks/pii-audit.sh`)
+- git-commit-guard pretooluse hook for safer git operations
+- gsuite public asset guard hook (prevents accidental public sharing)
+
+### Changed
+
+- **BREAKING**: Renamed `/swarm` skill to `/mux`
+- Model tier terminology now uses provider-agnostic naming (Low/Medium/High-tier)
+  - Mapping: Anthropic (haiku/sonnet/opus), Google (flash-lite/flash/pro), OpenAI (codex mini/codex/codex max)
+  - Added to PROJECT_AGENTS.md as project rule
+
+### Fixed
+
+- gsuite: Gmail tool merge_extra return value destructuring
+- skill-writer: Standardized frontmatter format and added resources
+- mux: Circuit breaker race conditions in read-modify-write operations (file locking)
+- mux: Signal coordination race conditions with atomic write pattern
+- mux: Task manager state validation preventing invalid transitions
+- mux: Authentication bypass vulnerability requiring explicit dev mode flag
+- mux: Test coverage increased with comprehensive unit and integration tests
+
 ## [0.1.16] - 2026-01-09
 
 ### Added
