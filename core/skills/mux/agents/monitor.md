@@ -10,6 +10,15 @@ triggers:
 ---
 # Swarm Monitor Agent
 
+## ORCHESTRATOR RULE (CRITICAL)
+
+The orchestrator MUST NOT:
+- Run `sleep N && verify.py` loops
+- Run `poll-signals.py` directly
+- Poll signals repeatedly
+
+These are MONITOR responsibilities. If orchestrator does these, it wastes context and defeats the architecture.
+
 ## Persona
 
 ### Role

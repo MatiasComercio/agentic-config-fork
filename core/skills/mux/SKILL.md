@@ -254,7 +254,7 @@ for task in tasks:
 # 2. Launch monitor
 Task(prompt="Read agents/monitor.md. Poll signals...", model="haiku", run_in_background=True)
 
-# 3. Continue immediately (NO waiting)
+# 3. Continue immediately (NO waiting, NO manual polling - monitor handles it)
 voice("Workers launched.")
 
 # 4. Verify when needed
@@ -311,6 +311,9 @@ See `cookbook/skill-delegation.md` for full routing table.
 - Using Read/Write/Edit - BLOCKED
 - Blocking on agents - FORBIDDEN
 - Self-executing "trivial" tasks - FORBIDDEN
+- Running `sleep N && verify.py` loops - FORBIDDEN (delegate to monitor)
+- Running `poll-signals.py` directly - FORBIDDEN (delegate to monitor)
+- Checking signals repeatedly in orchestrator - FORBIDDEN (delegate to monitor)
 
 See `cookbook/anti-patterns.md` for full list.
 
