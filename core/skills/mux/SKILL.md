@@ -38,7 +38,17 @@ Everything else = DELEGATE via Task()
 
 - **TaskOutput()** - NEVER block on agent completion
 - **run_in_background=False** - ALWAYS use True
-- **Waiting for monitor** - Continue immediately after launch
+- **Direct execution** - NEVER use Read/Write/Edit/Grep/Glob/WebFetch/WebSearch yourself
+- **Blocking on agents** - Continue immediately after launch, use signals for completion
+
+## INTERACTIVE GATES
+
+Use AskUserQuestion() at these critical decision points:
+- Sentinel review failure (proceed or address gaps?)
+- Consolidation needed (auto vs manual?)
+- Error recovery (retry or abort?)
+
+Between phases: proceed automatically with voice/text announcements.
 
 ## WORKER + MONITOR (MANDATORY)
 

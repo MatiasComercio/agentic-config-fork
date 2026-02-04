@@ -75,6 +75,35 @@ The monitor uses `poll-signals.py` internally. Orchestrator should NEVER block o
 - NEVER delete session directories
 - NEVER run `rm -rf tmp/swarm/*`
 
+## Phase Execution Violations
+
+- NEVER launch all phases simultaneously
+- NEVER skip interactive gates at decision points
+- NEVER proceed after sentinel failure without user input
+- NEVER consolidate without checking threshold first
+
+### All-At-Once Launch (CRITICAL BUG)
+
+```python
+# FATAL VIOLATION - launches all phases together
+Task(prompt="Research...", run_in_background=True)
+Task(prompt="Audit...", run_in_background=True)
+Task(prompt="Consolidate...", run_in_background=True)
+Task(prompt="Write...", run_in_background=True)
+
+# CORRECT - phased execution with announcements
+# Phase 1: Research
+Task(prompt="Research...", run_in_background=True)
+Task(prompt="Monitor research...", model="haiku", run_in_background=True)
+voice("Research phase launched")
+
+# Phase 2: Audit (after research signals)
+Task(prompt="Audit...", run_in_background=True)
+Task(prompt="Monitor audit...", model="haiku", run_in_background=True)
+voice("Audit phase launched")
+# ... etc
+```
+
 ## Consequence
 
 Context pollution leads to session death. When context is full, your session dies.

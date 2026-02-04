@@ -51,10 +51,15 @@ class ToolCallInspector:
 
     def __init__(self) -> None:
         self.calls: list[ToolCall] = []
+        self._time_offset: float = 0.0
 
     def record(self, name: str, parameters: dict[str, Any]) -> None:
         """Record a tool call."""
-        self.calls.append(ToolCall(name=name, parameters=parameters))
+        import time
+
+        self.calls.append(
+            ToolCall(name=name, parameters=parameters, timestamp=time.time() + self._time_offset)
+        )
 
     def has_tool(self, name: str) -> bool:
         """Check if tool was called."""
@@ -71,6 +76,11 @@ class ToolCallInspector:
     def clear(self) -> None:
         """Clear all recorded calls."""
         self.calls.clear()
+        self._time_offset = 0.0
+
+    def advance_time(self, seconds: float) -> None:
+        """Advance simulated time for phase separation testing."""
+        self._time_offset += seconds
 
 
 class MockClient:

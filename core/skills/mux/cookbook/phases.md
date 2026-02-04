@@ -265,7 +265,30 @@ FINAL: Return EXACTLY: done""",
 )
 ```
 
-If FAIL: Ask user whether to proceed or address gaps.
+If FAIL: Use AskUserQuestion to let user decide:
+```python
+AskUserQuestion(
+    questions=[{
+        "question": "Sentinel review found gaps. How to proceed?",
+        "header": "Quality Gate",
+        "options": [
+            {"label": "Proceed anyway", "description": "Accept current quality and continue"},
+            {"label": "Address gaps", "description": "Re-run affected phases to fix issues"},
+            {"label": "Abort", "description": "Stop session without delivering"}
+        ],
+        "multiSelect": False
+    }]
+)
+```
+
+## Interactive Gates (Critical Decision Points)
+
+Use AskUserQuestion ONLY at these points:
+1. **Sentinel failure** - proceed/address/abort
+2. **Consolidation decision** - when output > 80KB
+3. **Error recovery** - timeout/failure handling
+
+Normal phase transitions: voice announcement + auto-proceed.
 
 ## Error Recovery Patterns
 
