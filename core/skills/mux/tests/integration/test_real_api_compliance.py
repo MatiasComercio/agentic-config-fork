@@ -509,6 +509,188 @@ class TestRealNoTaskOutputBlocking:
         )
 
 
+class TestRealNoWebToolsSelfExecution:
+    """Test that MUX orchestrator never uses WebFetch/WebSearch directly."""
+
+    @pytest.mark.asyncio
+    async def test_real_no_web_tools_self_execution(
+        self, session_dir: Path
+    ) -> None:
+        """Invoke MUX and verify it delegates web operations."""
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Research best practices for Python async patterns from the web",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+
+        # WebFetch and WebSearch are FORBIDDEN for orchestrator
+        webfetch_calls = [t for t in post_read_calls if t.name == "WebFetch"]
+        websearch_calls = [t for t in post_read_calls if t.name == "WebSearch"]
+
+        assert len(webfetch_calls) == 0, (
+            f"MUX must NOT use WebFetch directly - found {len(webfetch_calls)} calls. "
+            "Delegate web fetching to researchers via Task()."
+        )
+        assert len(websearch_calls) == 0, (
+            f"MUX must NOT use WebSearch directly - found {len(websearch_calls)} calls. "
+            "Delegate web searching to researchers via Task()."
+        )
+
+        # Verify research is delegated
+        task_calls = [t for t in post_read_calls if t.name == "Task"]
+        has_research_delegation = any(
+            "research" in t.input.get("prompt", "").lower()
+            or "web" in t.input.get("prompt", "").lower()
+            or "search" in t.input.get("prompt", "").lower()
+            for t in task_calls
+        )
+        assert has_research_delegation, (
+            "Web research must be delegated via Task, not executed directly"
+        )
+
+
+class TestRealInteractiveGatesAtDecisions:
+    """Test that MUX uses AskUserQuestion at critical decision points."""
+
+    @pytest.mark.asyncio
+    async def test_real_no_interactive_gate_for_normal_progress(
+        self, session_dir: Path
+    ) -> None:
+        """Verify AskUserQuestion is NOT used for routine phase transitions.
+
+        Normal flow: voice announcement + auto-proceed
+        NOT: asking user permission for each step
+        """
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Research async patterns",
+            session_dir,
+            max_turns=5,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+
+        # Check AskUserQuestion calls
+        ask_calls = [t for t in post_read_calls if t.name == "AskUserQuestion"]
+
+        # Filter out critical decision questions (those ARE expected)
+        routine_questions = []
+        for call in ask_calls:
+            questions = call.input.get("questions", [])
+            for q in questions:
+                question_text = q.get("question", "").lower()
+                # Critical decisions are OK to ask about
+                is_critical = any(
+                    kw in question_text
+                    for kw in ["sentinel", "fail", "error", "consolidat", "timeout", "gap"]
+                )
+                if not is_critical:
+                    routine_questions.append(question_text)
+
+        assert len(routine_questions) == 0, (
+            f"AskUserQuestion should NOT be used for routine transitions. "
+            f"Found {len(routine_questions)} non-critical questions: {routine_questions[:3]}"
+        )
+
+
+class TestRealPhasedExecutionNotAllAtOnce:
+    """Test that MUX executes phases sequentially, not all at once."""
+
+    @pytest.mark.asyncio
+    async def test_real_phased_execution_not_all_at_once(
+        self, session_dir: Path
+    ) -> None:
+        """Verify phases don't all launch in the same message batch.
+
+        CRITICAL BUG: Launching research + audit + consolidation + write all together
+        CORRECT: Sequential phases with signal-based progression
+        """
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Full analysis: research async patterns, audit codebase, write summary",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+        task_calls = [t for t in post_read_calls if t.name == "Task"]
+
+        # Classify phases from Task prompts
+        phase_keywords = {
+            "research": ["research", "search", "investigate"],
+            "audit": ["audit", "analyze", "review code"],
+            "consolidation": ["consolidat", "aggregate", "merge"],
+            "coordination": ["coordinat", "write", "compose"],
+        }
+
+        phases_found: list[str] = []
+        for task in task_calls:
+            prompt = task.input.get("prompt", "").lower()
+            for phase, keywords in phase_keywords.items():
+                if any(kw in prompt for kw in keywords):
+                    phases_found.append(phase)
+                    break
+
+        # Dedupe while preserving order
+        unique_phases = list(dict.fromkeys(phases_found))
+
+        # If we have multiple distinct phases, verify they're not all in the same batch
+        # The key insight: if all 4+ phases are in the first batch, that's the bug
+        if len(unique_phases) >= 3:
+            # With max_turns=7, we expect phases to be spread across turns
+            # If all phases appear with the same count as tasks, they launched together
+            assert len(task_calls) > len(unique_phases), (
+                f"Phases appear to have launched all at once. "
+                f"Found {len(unique_phases)} phases in {len(task_calls)} tasks. "
+                f"Phases: {unique_phases}. "
+                "MUX must execute phases sequentially with signal-based progression."
+            )
+
+
+class TestRealVoiceAnnouncementsBetweenPhases:
+    """Test that MUX uses voice announcements for phase transitions."""
+
+    @pytest.mark.asyncio
+    async def test_real_voice_announcements_between_phases(
+        self, session_dir: Path
+    ) -> None:
+        """Verify voice is used for phase transition announcements."""
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Research async patterns and audit the codebase",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+
+        # Check for voice announcements
+        voice_calls = [
+            t for t in post_read_calls
+            if t.name == "mcp__voicemode__converse"
+        ]
+
+        # Voice announcements should NOT wait for response (announcement mode)
+        for voice in voice_calls:
+            message = voice.input.get("message", "").lower()
+            # Phase announcements should be fire-and-forget
+            if any(kw in message for kw in ["phase", "launch", "start", "complete"]):
+                assert voice.input.get("wait_for_response") is False, (
+                    f"Phase announcement voice should not wait for response: {message}"
+                )
+
+
 # Run tests directly if executed as script
 if __name__ == "__main__":
     print("Require 3 consecutive runs to pass...")

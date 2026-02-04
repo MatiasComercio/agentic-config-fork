@@ -48,150 +48,100 @@ TaskState = task_manager.TaskState
 sync_from_signals = task_manager.sync_from_signals
 
 
-class TestResult:
-    """Test result tracking."""
-    def __init__(self):
-        self.passed = []
-        self.failed = []
-
-    def add_pass(self, test_name: str):
-        self.passed.append(test_name)
-        print(f"✓ {test_name}")
-
-    def add_fail(self, test_name: str, error: str):
-        self.failed.append((test_name, error))
-        print(f"✗ {test_name}: {error}")
-
-    def summary(self):
-        total = len(self.passed) + len(self.failed)
-        print(f"\n{len(self.passed)}/{total} tests passed")
-        if self.failed:
-            print("\nFailed tests:")
-            for name, error in self.failed:
-                print(f"  - {name}: {error}")
-        return len(self.failed) == 0
-
-
 def _create_signal_helper(sig_dir: Path, idx: int):
     """Helper for multiprocessing - must be at module level."""
     sig_file = sig_dir / f"test-{idx}.done"
     sig_file.write_text(json.dumps({"id": idx}))
 
 
-def test_circuit_breaker_prevents_task_submission(result: TestResult):
+def _record_success_helper(session_dir: Path, agent_type: str):
+    """Helper for multiprocessing - must be at module level."""
+    record_success(session_dir, agent_type)
+
+
+def test_circuit_breaker_prevents_task_submission():
     """Test circuit breaker prevents task submission when open."""
-    test_name = "test_circuit_breaker_prevents_task_submission"
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            session_dir = Path(tmpdir) / "session"
-            session_dir.mkdir()
-            agent_type = "test_agent"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        session_dir = Path(tmpdir) / "session"
+        session_dir.mkdir()
+        agent_type = "test_agent"
 
-            # Open circuit by recording failures
-            for _ in range(5):
-                record_failure(session_dir, agent_type)
+        # Open circuit by recording failures
+        for _ in range(5):
+            record_failure(session_dir, agent_type)
 
-            # Verify circuit is open
-            allowed = check_circuit(session_dir, agent_type)
-            assert not allowed, "Circuit should be OPEN after failures"
+        # Verify circuit is open
+        allowed = check_circuit(session_dir, agent_type)
+        assert not allowed, "Circuit should be OPEN after failures"
 
-            # Attempt task submission (should be blocked)
-            storage_dir = Path(tmpdir) / "storage"
-            manager = TaskManager(storage_dir)
+        # Attempt task submission (should be blocked)
+        storage_dir = Path(tmpdir) / "storage"
+        manager = TaskManager(storage_dir)
 
-            # Circuit breaker should prevent this in production
-            # Here we verify the check_circuit logic works
-            if check_circuit(session_dir, agent_type):
-                _task = manager.create_task("session-001", "Should not run")
-                result.add_fail(test_name, "Task created despite OPEN circuit")
-            else:
-                result.add_pass(test_name)
-
-    except Exception as e:
-        result.add_fail(test_name, str(e))
+        # Circuit breaker should prevent this in production
+        # Here we verify the check_circuit logic works
+        assert not check_circuit(session_dir, agent_type), "Circuit should remain OPEN"
 
 
-def test_signal_triggers_task_state_update(result: TestResult):
+def test_signal_triggers_task_state_update():
     """Test signal creation triggers task manager state update."""
-    test_name = "test_signal_triggers_task_state_update"
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            storage_dir = Path(tmpdir) / "storage"
-            signals_dir = Path(tmpdir) / "signals"
-            signals_dir.mkdir()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage_dir = Path(tmpdir) / "storage"
+        signals_dir = Path(tmpdir) / "signals"
+        signals_dir.mkdir()
 
-            # Create task
-            manager = TaskManager(storage_dir)
-            task = manager.create_task("session-003", "Test task")
+        # Create task
+        manager = TaskManager(storage_dir)
+        task = manager.create_task("session-003", "Test task")
 
-            # Create signal using signal tool logic (atomic write)
-            signal_file = signals_dir / "phase-001.done"
-            signal_data = {"status": "completed", "phase": "001"}
-            signal_file.write_text(json.dumps(signal_data))
+        # Create signal using signal tool logic (atomic write)
+        signal_file = signals_dir / "phase-001.done"
+        signal_data = {"status": "completed", "phase": "001"}
+        signal_file.write_text(json.dumps(signal_data))
 
-            # Before sync: task should be SUBMITTED
-            assert task.status.state == TaskState.SUBMITTED
+        # Before sync: task should be SUBMITTED
+        assert task.status.state == TaskState.SUBMITTED
 
-            # After sync: task state should update based on signals
-            # (In this test, we have a done signal but not sentinel.done)
-            sync_from_signals(manager, task.id, signals_dir)
-            task = manager.get_task(task.id)
+        # After sync: task state should update based on signals
+        # (In this test, we have a done signal but not sentinel.done)
+        sync_from_signals(manager, task.id, signals_dir)
+        task = manager.get_task(task.id)
 
-            # Task should still be in working state (not completed yet)
-            # because sentinel.done is not present
-            assert task.status.state in [TaskState.SUBMITTED, TaskState.WORKING]
-
-            result.add_pass(test_name)
-    except Exception as e:
-        result.add_fail(test_name, str(e))
+        # Task should still be in working state (not completed yet)
+        # because sentinel.done is not present
+        assert task.status.state in [TaskState.SUBMITTED, TaskState.WORKING]
 
 
-def test_concurrent_signal_and_circuit_breaker(result: TestResult):
+def test_concurrent_signal_and_circuit_breaker():
     """Test concurrent signal creation and circuit breaker state updates."""
-    test_name = "test_concurrent_signal_and_circuit_breaker"
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            session_dir = Path(tmpdir) / "session"
-            signals_dir = Path(tmpdir) / "signals"
-            session_dir.mkdir()
-            signals_dir.mkdir()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        session_dir = Path(tmpdir) / "session"
+        signals_dir = Path(tmpdir) / "signals"
+        session_dir.mkdir()
+        signals_dir.mkdir()
 
-            agent_type = "concurrent_agent"
+        agent_type = "concurrent_agent"
 
-            # Concurrently record successes and create signals
-            processes = []
-            for i in range(10):
-                # Process 1: Record success in circuit breaker
-                p1 = Process(target=record_success, args=(session_dir, agent_type))
-                # Process 2: Create signal
-                p2 = Process(target=_create_signal_helper, args=(signals_dir, i))
+        # Concurrently record successes and create signals
+        processes = []
+        for i in range(10):
+            # Process 1: Record success in circuit breaker
+            p1 = Process(target=_record_success_helper, args=(session_dir, agent_type))
+            # Process 2: Create signal
+            p2 = Process(target=_create_signal_helper, args=(signals_dir, i))
 
-                processes.extend([p1, p2])
-                p1.start()
-                p2.start()
+            processes.extend([p1, p2])
+            p1.start()
+            p2.start()
 
-            # Wait for all processes
-            for p in processes:
-                p.join()
+        # Wait for all processes
+        for p in processes:
+            p.join()
 
-            # Verify circuit breaker state (should be CLOSED with successes)
-            allowed = check_circuit(session_dir, agent_type)
-            assert allowed, "Circuit should be CLOSED after successes"
+        # Verify circuit breaker state (should be CLOSED with successes)
+        allowed = check_circuit(session_dir, agent_type)
+        assert allowed, "Circuit should be CLOSED after successes"
 
-            # Verify all signals created
-            signal_files = list(signals_dir.glob("*.done"))
-            assert len(signal_files) == 10, f"Expected 10 signals, got {len(signal_files)}"
-
-            result.add_pass(test_name)
-    except Exception as e:
-        result.add_fail(test_name, str(e))
-
-
-if __name__ == "__main__":
-    result = TestResult()
-    test_circuit_breaker_prevents_task_submission(result)
-    test_signal_triggers_task_state_update(result)
-    test_concurrent_signal_and_circuit_breaker(result)
-
-    success = result.summary()
-    sys.exit(0 if success else 1)
+        # Verify all signals created
+        signal_files = list(signals_dir.glob("*.done"))
+        assert len(signal_files) == 10, f"Expected 10 signals, got {len(signal_files)}"
