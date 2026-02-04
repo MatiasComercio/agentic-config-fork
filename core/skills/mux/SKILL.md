@@ -40,6 +40,7 @@ Everything else = DELEGATE via Task()
 - **run_in_background=False** - ALWAYS use True
 - **Direct execution** - NEVER use Read/Write/Edit/Grep/Glob/WebFetch/WebSearch yourself
 - **Blocking on agents** - Continue immediately after launch, use signals for completion
+- **Polling agent output** - NEVER use Read/Bash/tail to check agent progress files. Trust notification system - wait for task-notification, never poll `/private/tmp/claude-*/tasks/*.output`
 
 ## INTERACTIVE GATES
 

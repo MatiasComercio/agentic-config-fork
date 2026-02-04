@@ -691,6 +691,316 @@ class TestRealVoiceAnnouncementsBetweenPhases:
                 )
 
 
+class TestRealNoAgentOutputPolling:
+    """Test that MUX orchestrator never polls agent output files."""
+
+    @pytest.mark.asyncio
+    async def test_real_no_agent_output_polling(
+        self, session_dir: Path
+    ) -> None:
+        """Invoke MUX and verify it never polls agent output files.
+
+        FORBIDDEN: Reading/tailing /private/tmp/claude-*/tasks/*.output
+        CORRECT: Trust notification system, use signals for completion
+        """
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Research Python async patterns and check agent status",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+
+        # Check for forbidden output file polling patterns
+        forbidden_output_patterns = [
+            r"/private/tmp/claude.*tasks.*\.output",
+            r"claude-.*\.output",
+            r"tasks/.*\.output",
+            r"tail.*\.output",
+            r"cat.*\.output",
+        ]
+
+        # Check Read calls for output file access
+        read_calls = [t for t in post_read_calls if t.name == "Read"]
+        for read in read_calls:
+            file_path = read.input.get("file_path", "")
+            for pattern in forbidden_output_patterns:
+                assert not re.search(pattern, file_path, re.IGNORECASE), (
+                    f"MUX FORBIDDEN: polling agent output file via Read: {file_path}. "
+                    "Trust notification system - never poll task output files."
+                )
+
+        # Check Bash calls for output file access
+        bash_calls = [t for t in post_read_calls if t.name == "Bash"]
+        for bash in bash_calls:
+            command = bash.input.get("command", "")
+            for pattern in forbidden_output_patterns:
+                assert not re.search(pattern, command, re.IGNORECASE), (
+                    f"MUX FORBIDDEN: polling agent output file via Bash: {command}. "
+                    "Trust notification system - never poll task output files."
+                )
+
+
+class TestRealNoSkillInvocationFromOrchestrator:
+    """Test that MUX orchestrator never calls Skill() directly."""
+
+    @pytest.mark.asyncio
+    async def test_real_no_skill_invocation_from_orchestrator(
+        self, session_dir: Path
+    ) -> None:
+        """Invoke MUX and verify it never uses Skill() directly.
+
+        FATAL VIOLATION: Skill() executes IN orchestrator context
+        CORRECT: Delegate via Task() with explicit skill invocation instructions
+        """
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Run spec workflow for a new feature",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+
+        # Skill tool is FORBIDDEN - it executes in orchestrator context
+        skill_calls = [t for t in post_read_calls if t.name == "Skill"]
+
+        assert len(skill_calls) == 0, (
+            f"MUX FATAL: Skill() called directly from orchestrator - found {len(skill_calls)} calls. "
+            "Skill() executes IN your context, causing context suicide. "
+            "Delegate via Task() with explicit skill invocation instructions."
+        )
+
+
+class TestRealTaskPromptsContainAbsolutePaths:
+    """Test that MUX Task prompts contain absolute paths, not vague instructions."""
+
+    @pytest.mark.asyncio
+    async def test_real_task_prompts_contain_absolute_paths(
+        self, session_dir: Path
+    ) -> None:
+        """Invoke MUX and verify Task prompts include absolute paths.
+
+        VIOLATION: Vague prompts like "run /spec" or "analyze codebase"
+        CORRECT: Explicit paths like "/Users/x/project/..." in prompts
+        """
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            f"Audit the codebase structure. Session: {session_dir}",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+        task_calls = [t for t in post_read_calls if t.name == "Task"]
+
+        # Skip if no task calls (test may timeout before delegation)
+        if len(task_calls) == 0:
+            pytest.skip("No Task calls captured - test may need more turns")
+
+        # Check that prompts contain absolute paths (Unix-style)
+        prompts_with_paths = 0
+        for task in task_calls:
+            prompt = task.input.get("prompt", "")
+            # Check for absolute path patterns (Unix)
+            if re.search(r"/[A-Za-z][A-Za-z0-9_/-]*", prompt):
+                prompts_with_paths += 1
+
+        # At least half of Task prompts should contain absolute paths
+        ratio = prompts_with_paths / len(task_calls) if task_calls else 0
+        assert ratio >= 0.5, (
+            f"MUX Task prompts should contain absolute paths. "
+            f"Found {prompts_with_paths}/{len(task_calls)} prompts with paths ({ratio:.0%}). "
+            "Use explicit paths in prompts, not vague instructions."
+        )
+
+
+class TestRealNoDirectGrepCatFind:
+    """Test that MUX never runs grep/cat/find/head/tail directly."""
+
+    @pytest.mark.asyncio
+    async def test_real_no_direct_grep_cat_find(
+        self, session_dir: Path
+    ) -> None:
+        """Invoke MUX and verify it doesn't run inspection commands.
+
+        CONTEXT SUICIDE: Running grep, cat, head, tail, find for content inspection
+        CORRECT: Delegate all inspection to workers via Task()
+        """
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Find all Python files and analyze their content",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+
+        # Check for forbidden inspection commands in Bash
+        forbidden_commands = [
+            r"^\s*grep\s",
+            r"^\s*cat\s",
+            r"^\s*head\s",
+            r"^\s*tail\s",
+            r"^\s*find\s",
+            r"\|\s*grep\s",
+            r"\|\s*cat\s",
+            r"\|\s*head\s",
+            r"\|\s*tail\s",
+        ]
+
+        bash_calls = [t for t in post_read_calls if t.name == "Bash"]
+        for bash in bash_calls:
+            command = bash.input.get("command", "")
+            # Allow mkdir and tool invocations
+            if "mkdir" in command or "uv run tools" in command:
+                continue
+            for pattern in forbidden_commands:
+                assert not re.search(pattern, command, re.IGNORECASE), (
+                    f"MUX FORBIDDEN: inspection command in Bash: {command}. "
+                    "Delegate content inspection to workers via Task()."
+                )
+
+
+class TestRealNoBuildTestLintCommands:
+    """Test that MUX never runs build/test/lint commands directly."""
+
+    @pytest.mark.asyncio
+    async def test_real_no_build_test_lint_commands(
+        self, session_dir: Path
+    ) -> None:
+        """Invoke MUX and verify it doesn't run build/test/lint directly.
+
+        CONTEXT SUICIDE: Running npx, npm, cdk, cargo, go, make, pytest, ruff
+        CORRECT: Delegate all build/test/lint to workers via Task()
+        """
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Run tests and lint the codebase",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+
+        # Check for forbidden build/test/lint commands
+        forbidden_commands = [
+            r"^\s*npm\s",
+            r"^\s*npx\s",
+            r"^\s*cdk\s",
+            r"^\s*cargo\s",
+            r"^\s*go\s+(build|test|run)",
+            r"^\s*make\s",
+            r"^\s*pytest\s",
+            r"^\s*ruff\s",
+            r"^\s*pyright\s",
+            r"^\s*mypy\s",
+        ]
+
+        bash_calls = [t for t in post_read_calls if t.name == "Bash"]
+        for bash in bash_calls:
+            command = bash.input.get("command", "")
+            # Allow mkdir and mux tool invocations
+            if "mkdir" in command or "uv run tools/" in command:
+                continue
+            for pattern in forbidden_commands:
+                assert not re.search(pattern, command, re.IGNORECASE), (
+                    f"MUX FORBIDDEN: build/test/lint command: {command}. "
+                    "Delegate build/test/lint to workers via Task()."
+                )
+
+
+class TestRealNoGitInspectionCommands:
+    """Test that MUX never runs git inspection commands directly."""
+
+    @pytest.mark.asyncio
+    async def test_real_no_git_inspection_commands(
+        self, session_dir: Path
+    ) -> None:
+        """Invoke MUX and verify it doesn't run git inspection directly.
+
+        CONTEXT SUICIDE: Running git status, git diff, git log for inspection
+        CORRECT: Delegate git inspection to workers via Task()
+        """
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Analyze recent git changes and commits",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+
+        # Check for forbidden git inspection commands
+        forbidden_git_patterns = [
+            r"git\s+status",
+            r"git\s+diff",
+            r"git\s+log",
+            r"git\s+show",
+            r"git\s+blame",
+        ]
+
+        bash_calls = [t for t in post_read_calls if t.name == "Bash"]
+        for bash in bash_calls:
+            command = bash.input.get("command", "")
+            for pattern in forbidden_git_patterns:
+                assert not re.search(pattern, command, re.IGNORECASE), (
+                    f"MUX FORBIDDEN: git inspection command: {command}. "
+                    "Delegate git inspection to workers via Task()."
+                )
+
+
+class TestRealDelegationNotInlineExecution:
+    """Test that MUX delegates work instead of implementing inline."""
+
+    @pytest.mark.asyncio
+    async def test_real_delegation_not_inline_execution(
+        self, session_dir: Path
+    ) -> None:
+        """Invoke MUX with complex task and verify delegation over inline work.
+
+        VIOLATION: Implementing agent behavior inline
+        CORRECT: Decompose and delegate via Task()
+        """
+        skip_if_not_available()
+
+        tool_calls = await invoke_mux_skill(
+            "Research async patterns, audit the codebase, and write a summary report",
+            session_dir,
+            max_turns=7,
+        )
+
+        # Get tool calls after skill read
+        post_read_calls = filter_post_skill_read_tools(tool_calls)
+
+        # Count delegation vs direct execution
+        task_calls = [t for t in post_read_calls if t.name == "Task"]
+        forbidden_tools = ["Read", "Write", "Edit", "Grep", "Glob", "WebFetch", "WebSearch"]
+        direct_execution_calls = [
+            t for t in post_read_calls if t.name in forbidden_tools
+        ]
+
+        # MUX should have more delegations than direct executions
+        assert len(task_calls) > len(direct_execution_calls), (
+            f"MUX should delegate more than execute directly. "
+            f"Found {len(task_calls)} Task calls vs {len(direct_execution_calls)} direct execution calls. "
+            f"Direct tools used: {[t.name for t in direct_execution_calls]}"
+        )
+
+
 # Run tests directly if executed as script
 if __name__ == "__main__":
     print("Require 3 consecutive runs to pass...")
