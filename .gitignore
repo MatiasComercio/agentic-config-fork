@@ -50,5 +50,8 @@ customization/
 # External specs repository (cloned locally, tracked separately)
 .specs/
 
+# Git worktrees (local development, not tracked)
+trees/
+
 # Invalid nested symlinks (artifacts from misconfigured setups)
 core/agents/agents
