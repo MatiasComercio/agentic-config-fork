@@ -106,12 +106,7 @@ def build_mux_prompt(task_description: str, session_dir: Path | None = None) -> 
     return f"""Read the MUX skill from {MUX_SKILL_PATH}, then follow its instructions.
 
 TASK: {task_description}{session_context}
-
-After reading the skill, you MUST follow MUX protocol:
-1. Delegate ALL work via Task(run_in_background=True)
-2. Launch a monitor agent using model="haiku"
-3. Do NOT use Read/Write/Edit/Grep/Glob yourself after reading the skill - delegate instead
-4. Use absolute paths in all Task prompts"""
+Note: Use absolute paths in all Task prompts"""
 
 
 async def invoke_mux_skill(
