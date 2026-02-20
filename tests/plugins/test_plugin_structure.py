@@ -63,15 +63,10 @@ FORBIDDEN_PATTERNS = [
     r'core/scripts/',
 ]
 
-# Allowed exceptions
+# Allowed exceptions (context-based patterns)
 ALLOWED_EXCEPTIONS = [
     r'~/.agents/customization/',  # User-data path, exempt (SC9)
 ]
-
-# Files exempt from certain checks (setup scripts that manage target projects)
-SETUP_SCRIPT_EXEMPTIONS = {
-    "update-config.sh",  # Manages monolithic installation targets
-}
 
 
 class TestPluginExists(unittest.TestCase):
@@ -137,9 +132,6 @@ class TestNoForbiddenLibraryDeps(unittest.TestCase):
                 fpath = Path(root) / fname
                 if fpath.suffix not in (".md", ".sh", ".py", ".json"):
                     continue
-                # Skip setup script exemptions
-                if fpath.name in SETUP_SCRIPT_EXEMPTIONS:
-                    continue
                 content = fpath.read_text(errors="replace")
                 for pattern in FORBIDDEN_PATTERNS:
                     matches = list(re.finditer(pattern, content))
@@ -193,7 +185,7 @@ class TestNoParentDirectoryTraversal(unittest.TestCase):
             r'cd.*&&.*\.\./',     # cd to subdirectory then reference parent
             r'\.\.\/',             # Any ../ in exempt scripts
         ]
-        exempt_files = SETUP_SCRIPT_EXEMPTIONS | {
+        exempt_files = {
             "update-config.sh", "setup-config.sh", "migrate-existing.sh",
         }
         for root, _dirs, files in os.walk(PLUGINS_DIR):

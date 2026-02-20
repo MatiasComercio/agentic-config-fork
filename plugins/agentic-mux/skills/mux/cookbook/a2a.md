@@ -31,10 +31,10 @@ External A2A Clients          Internal Swarm Workflow
 
 ```bash
 # Generate auth token
-uv run .claude/skills/swarm/a2a/auth.py generate
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/swarm/a2a/auth.py generate
 
 # Start server
-uv run .claude/skills/swarm/a2a/server.py
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/swarm/a2a/server.py
 ```
 
 ## Client Usage

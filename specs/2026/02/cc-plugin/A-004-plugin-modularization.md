@@ -1572,3 +1572,23 @@ The core architecture is correct: 6 plugins created with proper structure, distr
 4. Fix `cookbook/a2a.md`: replace `.claude/skills/swarm/` with `${CLAUDE_PLUGIN_ROOT}/skills/` equivalent
 5. Update tests to remove SETUP_SCRIPT_EXEMPTIONS once update-config.sh is fixed
 6. Re-run final sweep to confirm zero forbidden patterns
+
+## Plan
+
+### Post-Fixes
+
+- FIX-1: Replace 5 `.claude/skills/mux/tools/` paths in `plugins/agentic-mux/commands/mux-roadmap.md` (lines 309, 1155, 1404, 1464, 1613) with `${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/`
+- FIX-2: Replace 2 `.claude/skills/swarm/` paths in `plugins/agentic-mux/skills/mux/cookbook/a2a.md` (lines 34, 37) with `${CLAUDE_PLUGIN_ROOT}/skills/swarm/`
+- FIX-3: Remove `plugins/agentic-mux/skills/mux/tools/__pycache__/` directory (binary cache, not shippable)
+- FIX-4: Update `update-config.sh` `core/` references -- these are intentional self-hosted fallback paths (guarded by `[[ -d "$target/core" ]]`), not plugin self-references; update tests to reflect this distinction via `ALLOWED_TARGET_PATTERNS` instead of file-level exemption
+- FIX-5: Remove `SETUP_SCRIPT_EXEMPTIONS` from `tests/plugins/test_plugin_structure.py` and `EXEMPT_FILES` from `tests/plugins/test_plugin_isolation.sh`; add `ALLOWED_TARGET_PATTERNS` that recognizes `$target/core/` as valid self-hosted fallback paths
+
+## Implement
+
+### Post-Fixes
+
+- TODO-PF1: Fix mux-roadmap.md - replace 5 `.claude/skills/mux/tools/` refs (Status: Done)
+- TODO-PF2: Fix a2a.md - replace 2 `.claude/skills/swarm/` refs (Status: Done)
+- TODO-PF3: Delete __pycache__ directory (Status: Done)
+- TODO-PF4: Update update-config.sh core/ references with self-hosted guard documentation (Status: Done)
+- TODO-PF5: Update tests - remove SETUP_SCRIPT_EXEMPTIONS, add ALLOWED_TARGET_PATTERNS (Status: Done)

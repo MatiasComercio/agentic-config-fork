@@ -154,8 +154,8 @@ sync_self_hosted_hooks() {
       missing+=("$hook")
       mkdir -p "$target/.claude/hooks/pretooluse"
       if [[ "$is_self" == true ]]; then
-        # Self-restoration: use relative path
-        (cd "$target/.claude/hooks/pretooluse" && if [[ -f "../../../core/hooks/pretooluse/$hook" ]]; then ln -sf "../../../core/hooks/pretooluse/$hook" "$hook"; fi)
+        # Self-restoration: use plugin-relative path
+        (cd "$target/.claude/hooks/pretooluse" && if [[ -f "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/$hook" ]]; then ln -sf "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/$hook" "$hook"; fi)
       else
         # Cross-repo sync: use absolute path
         ln -sf "$hook_file" "$dest"
@@ -733,7 +733,7 @@ for hook_file in "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/pretooluse/"*.py; do
     else
       if [[ "$IS_SELF_HOSTED" == true ]]; then
         # Self-hosted: use relative path per PROJECT_AGENTS.md
-        (cd "$TARGET_PATH/.claude/hooks/pretooluse" && if [[ -f "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/$hook" ]]; then ln -sf "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/$hook" "$hook"; elif [[ -f "../../../core/hooks/pretooluse/$hook" ]]; then ln -sf "../../../core/hooks/pretooluse/$hook" "$hook"; fi)
+        (cd "$TARGET_PATH/.claude/hooks/pretooluse" && if [[ -f "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/$hook" ]]; then ln -sf "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/$hook" "$hook"; fi)
       else
         # Cross-project: use absolute path
         ln -sf "$hook_file" "$TARGET_PATH/.claude/hooks/pretooluse/$hook"

@@ -31,14 +31,12 @@ import os, sys
 
 cache_dir = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('CACHE_DIR', '')
 
-FORBIDDEN = ['AGENTIC_GLOBAL', '_AGENTIC_ROOT', 'core/lib/', 'core/tools/', 'core/prompts/']
+FORBIDDEN = ['AGENTIC_GLOBAL', '_AGENTIC_ROOT', 'core/lib/', 'core/tools/', 'core/prompts/', 'core/hooks/']
 ALLOWED = ['~/.agents/customization/']
-EXEMPT_FILES = {'update-config.sh'}
 
 found = []
 for root, dirs, files in os.walk(cache_dir):
     for fname in files:
-        if fname in EXEMPT_FILES: continue
         if not fname.endswith(('.md', '.sh', '.py', '.json')): continue
         fpath = os.path.join(root, fname)
         try:

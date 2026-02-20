@@ -306,7 +306,7 @@ specs_created_list:
 
 Signal when done:
 ```bash
-uv run .claude/skills/mux/tools/signal.py {session_dir}/.signals/decomposition.done --status success --meta path={session_dir}/decomposition.md
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/signal.py {session_dir}/.signals/decomposition.done --status success --meta path={session_dir}/decomposition.md
 ```
 
 CRITICAL:
@@ -1152,7 +1152,7 @@ Branch: <BRANCH>
 
 Then deactivate MUX session:
 ```bash
-uv run .claude/skills/mux/tools/deactivate.py
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/deactivate.py
 ```
 
 ## CONTINUE.md Template
@@ -1401,7 +1401,7 @@ MUX MODE | Action: Skill(mux) | Target: roadmap orchestration | Rationale: manda
 
 MUX MODE | Action: uv run session.py | Target: session init | Rationale: mandatory MUX first action
 
-> Bash("uv run .claude/skills/mux/tools/session.py 'feature-migration'")
+> Bash("uv run ${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/session.py 'feature-migration'")
 
 MUX MODE | Action: Task (Strategy Analyst) | Target: decomposition | Rationale: delegate spec reading
 
@@ -1461,7 +1461,7 @@ MUX MODE | Action: Skill(mux) | Target: roadmap resume | Rationale: mandatory fi
 
 MUX MODE | Action: uv run session.py | Target: session init | Rationale: mandatory MUX first action
 
-> Bash("uv run .claude/skills/mux/tools/session.py 'migration-resume'")
+> Bash("uv run ${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/session.py 'migration-resume'")
 
 MUX MODE | Action: Task (explore) | Target: read CONTINUE.md | Rationale: delegate state reading
 
@@ -1610,7 +1610,7 @@ Branch: feat/migration-v2
 
 MUX MODE | Action: uv run deactivate.py | Target: cleanup | Rationale: MUX work complete
 
-> Bash("uv run .claude/skills/mux/tools/deactivate.py")
+> Bash("uv run ${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/deactivate.py")
 ```
 
 ## Example 8: Post-Track Opus Fixer
