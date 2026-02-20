@@ -598,3 +598,13 @@ None. All checks passed on first run.
 ### Summary
 
 All 20 structural validation checks pass. Plugin directory restructure is fully correct: `.claude-plugin/plugin.json` is valid JSON with required `name` field; `commands/` (35 files), `skills/` (19 dirs, all with SKILL.md), and `agents/` (7 files + 13 spec stages) all match `core/` exactly; `core/` preserved; `.claude/` symlinks intact; no broken symlinks anywhere; `.gitignore` correctly excludes plugin-root dirs while tracking `plugin.json`; commit contains exactly the 3 expected tracked files.
+
+## Updated Doc
+
+### Files Updated
+
+None.
+
+### Changes Made
+
+- No documentation updates required. All A-001 changes are internal structural (plugin manifest, gitignore, agents symlink-to-dir conversion). Plugin system not yet exposed to end-users; README and AGENTS.md remain accurate for current user-facing functionality.
