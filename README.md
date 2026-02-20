@@ -92,6 +92,21 @@ Updates merge cleanly without conflicts.
 
 Project type is auto-detected or specified with `--type` flag.
 
+## Plugin Distribution (Claude Code)
+
+agentic-config is available as independently installable Claude Code plugins in the `plugins/` directory:
+
+| Plugin | Contents | Commands | Skills |
+|--------|----------|----------|--------|
+| `agentic` | Core infrastructure | 10 | 7 |
+| `agentic-spec` | Specification workflow | 3 | - |
+| `agentic-mux` | Multi-agent orchestration | 2 | 5 |
+| `agentic-git` | Git automation | 6 | 3 |
+| `agentic-review` | Code review | 5 | 2 |
+| `agentic-tools` | Productivity utilities | 9 | 2 |
+
+Each plugin is self-contained -- install only what you need. All plugins use `${CLAUDE_PLUGIN_ROOT}` for path resolution and work from `~/.claude/plugins/cache/` without external dependencies.
+
 ## Documentation
 
 - [Commands & Skills Index](docs/index.md) - Complete catalog with composition examples

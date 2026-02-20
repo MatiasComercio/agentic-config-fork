@@ -6,6 +6,19 @@ All notable changes to agentic-config.
 
 ### Added
 
+- Plugin distribution: 6 independently installable Claude Code plugins in `plugins/`
+  - `agentic`: Core workflow automation (setup, status, update, migrate, validate, customize, branch, spawn) -- 10 commands, 7 skills, 6 agents, 2 hooks
+  - `agentic-spec`: Specification workflow (spec, o_spec, po_spec + 13 stage agents + spec-resolver.sh) -- 3 commands
+  - `agentic-mux`: Multi-agent orchestration (mux, mux-ospec, mux-subagent, orc, mux-roadmap + Python tools + prompts) -- 2 commands, 5 skills
+  - `agentic-git`: Git automation (pull_request, squash, rebase, squash_commit, squash_and_rebase, release) -- 6 commands, 3 skills
+  - `agentic-review`: Code review workflows (e2e_review, gh_pr_review, full-life-cycle-pr, e2e-template, test_e2e) -- 5 commands, 2 skills
+  - `agentic-tools`: Productivity utilities (browser, video_query, fork-terminal, milestone, worktree, adr, ac-issue, prepare_app, setup-voice-mode) -- 9 commands, 2 skills, 1 hook
+  - All plugins use `${CLAUDE_PLUGIN_ROOT}` exclusively -- zero dependency on `~/.agents/agentic-config/`
+  - Each plugin is self-contained: works from `~/.claude/plugins/cache/` without external file references
+  - `plugins/agentic-spec/scripts/spec-resolver.sh`: plugin-aware version with inlined `get_project_root()`
+  - `plugins/agentic-spec/scripts/lib/config-loader.sh`: plugin-aware version (no `agentic-root.sh` dependency)
+  - `tests/plugins/test_plugin_structure.py`: 18 unit tests for plugin structure validation
+  - `tests/plugins/test_plugin_isolation.sh`: 29 E2E isolation tests (simulates cache copy)
 - Hook system migrated to plugin `hooks/hooks.json` format (Claude Code plugin format)
   - `hooks/hooks.json`: 3 PreToolUse hooks using `${CLAUDE_PLUGIN_ROOT}` for path resolution
   - `scripts/hooks/dry-run-guard.py`: refactored from `core/hooks/pretooluse/` -- removed `find_agentic_root()`, uses `Path.cwd()` for session path resolution
