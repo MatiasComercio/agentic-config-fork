@@ -4,6 +4,16 @@ All notable changes to agentic-config.
 
 ## [Unreleased]
 
+### Added
+
+- Hook system migrated to plugin `hooks/hooks.json` format (Claude Code plugin format)
+  - `hooks/hooks.json`: 3 PreToolUse hooks using `${CLAUDE_PLUGIN_ROOT}` for path resolution
+  - `scripts/hooks/dry-run-guard.py`: refactored from `core/hooks/pretooluse/` -- removed `find_agentic_root()`, uses `Path.cwd()` for session path resolution
+  - `scripts/hooks/git-commit-guard.py`: copied from `core/hooks/pretooluse/` (self-contained, no changes)
+  - `scripts/hooks/gsuite-public-asset-guard.py`: copied from `core/hooks/pretooluse/` (self-contained, no changes)
+  - MUX dynamic hooks (`mux-orchestrator-guard`, `mux-subagent-guard`) remain in skill SKILL.md frontmatter (not in hooks.json)
+  - Unit tests: `tests/hooks/test_hooks.py` (15 tests covering schema, matchers, executable permissions, shebang, no-hardcoded-paths, and behavior)
+
 ### Changed
 
 - 5 skills migrated to self-contained plugin isolation (no AGENTS.md, AGENTIC_GLOBAL, or .agentic-config.json dependencies):
