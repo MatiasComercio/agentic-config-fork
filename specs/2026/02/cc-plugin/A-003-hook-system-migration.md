@@ -823,3 +823,86 @@ Yes -- all 5 hooks preserved (3 in hooks.json, 2 in mux skill frontmatter). Hook
 
 #### Next Steps
 - Proceed to DOCUMENT stage or mark spec complete
+
+## Test Evidence & Outputs
+
+### Commands Run
+
+```bash
+python3 -m pytest tests/hooks/test_hooks.py -v
+uv run ruff check tests/hooks/test_hooks.py scripts/hooks/dry-run-guard.py scripts/hooks/git-commit-guard.py scripts/hooks/gsuite-public-asset-guard.py
+```
+
+### Results
+
+- **pytest**: 15 passed, 0 failed, 0 skipped in 0.15s
+- **ruff**: All checks passed (0 errors, 0 warnings)
+
+### Test Output
+
+```
+============================= test session starts ==============================
+platform darwin -- Python 3.13.0, pytest-9.0.2, pluggy-1.5.0
+rootdir: /Users/matias/projects/agentic-config/.claude/worktrees/cc-plugin
+collected 15 items
+
+tests/hooks/test_hooks.py::test_hooks_json_valid PASSED
+tests/hooks/test_hooks.py::test_hooks_json_structure PASSED
+tests/hooks/test_hooks.py::test_hooks_json_matchers PASSED
+tests/hooks/test_hooks.py::test_hooks_json_no_bash_wrapper PASSED
+tests/hooks/test_hooks.py::test_hooks_json_no_mux_hooks PASSED
+tests/hooks/test_hooks.py::test_scripts_exist PASSED
+tests/hooks/test_hooks.py::test_scripts_executable PASSED
+tests/hooks/test_hooks.py::test_scripts_have_shebang PASSED
+tests/hooks/test_hooks.py::test_dry_run_guard_no_hardcoded_paths PASSED
+tests/hooks/test_hooks.py::test_git_commit_guard_blocks_no_verify PASSED
+tests/hooks/test_hooks.py::test_git_commit_guard_allows_clean_commit PASSED
+tests/hooks/test_hooks.py::test_git_commit_guard_allows_non_bash PASSED
+tests/hooks/test_hooks.py::test_gsuite_guard_blocks_public PASSED
+tests/hooks/test_hooks.py::test_gsuite_guard_allows_normal PASSED
+tests/hooks/test_hooks.py::test_dry_run_guard_allows_when_no_status PASSED
+
+============================== 15 passed in 0.15s ==============================
+```
+
+### Fix Cycles
+
+0 (all tests passed on first run)
+
+### Summary
+
+All 15 unit tests pass covering: hooks.json schema validation (5 tests), script existence/permissions/shebang (3 tests), dry-run-guard path cleanup (1 test), and behavioral tests for all 3 hook scripts (6 tests). Lint clean.
+
+## Updated Doc
+
+### Files Updated
+- `CHANGELOG.md`
+
+### Changes Made
+- Added `[Unreleased] > Added` entry documenting hook system migration to `hooks/hooks.json` plugin format
+- Listed 3 hook scripts in `scripts/hooks/`, MUX hooks exclusion rationale, and test coverage
+
+## Sentinel
+
+### SC Validation
+
+| SC | Criterion | Grade | Evidence |
+|----|-----------|-------|----------|
+| AC1 | hooks/hooks.json validates as proper hook config | PASS | `python3 -m json.tool hooks/hooks.json` passes; top-level `hooks` key, nested `PreToolUse` array with 3 entries, each with `matcher` + `hooks[{type,command}]` |
+| AC2 | All 5 hooks fire on correct events with correct matchers | PASS | 3 in hooks.json: dry-run (Write\|Edit\|NotebookEdit\|Bash), git-commit (Bash), gsuite (Bash). 2 MUX hooks in SKILL.md frontmatter: mux-orchestrator-guard (core/skills/mux/SKILL.md:18), mux-subagent-guard (core/skills/mux-subagent/SKILL.md:8) |
+| AC3 | No hardcoded paths remain in hook scripts | PASS | `grep -rn 'find_agentic_root\|\.agentic-config\.json\|/Users/\|/home/' scripts/hooks/` returns empty |
+| AC4 | Hooks work from plugin cache (~/.claude/plugins/cache/) | PASS | hooks.json commands use `${CLAUDE_PLUGIN_ROOT}/scripts/hooks/`, dry-run-guard uses `Path.cwd()` for session (project dir), not plugin root |
+| AC5 | MUX-dynamic hooks remain as scripts within agentic-mux plugin | PASS | No mux references in hooks.json; mux-orchestrator-guard in core/skills/mux/SKILL.md frontmatter, mux-subagent-guard in core/skills/mux-subagent/SKILL.md frontmatter |
+| AC6 | scripts/hooks/ dir exists with 3 hook scripts | PASS | `ls scripts/hooks/` shows dry-run-guard.py, git-commit-guard.py, gsuite-public-asset-guard.py |
+| AC7 | All hook scripts use ${CLAUDE_PLUGIN_ROOT} (no bash -c wrapper) | PASS | hooks.json: 3 commands with `${CLAUDE_PLUGIN_ROOT}/scripts/hooks/<name>.py`, zero `bash -c` wrappers |
+| AC8 | dry-run-guard session resolution works from plugin cache | PASS | `get_session_status_path()` at line 58-69 uses `Path.cwd()` (project root), not CLAUDE_PLUGIN_ROOT. Session files resolve to `$CWD/outputs/session/{pid}/status.yml` |
+| AC9 | All 3 migrated scripts are executable | PASS | `test -x` passes for all 3 scripts; `ls -la` shows -rwxr-xr-x permissions |
+| AC10 | No regression: git-commit blocks --no-verify, gsuite blocks type=anyone | PASS | Unit tests confirm: test_git_commit_guard_blocks_no_verify (deny), test_gsuite_guard_blocks_public (deny). 15/15 tests pass |
+| AC11 | hooks.json correct format per plugin docs (nested hooks array, matcher field) | PASS | Structure: `{hooks: {PreToolUse: [{matcher, hooks: [{type: "command", command}]}]}}` -- matches plugin format with nested hooks array and matcher field |
+| AC12 | .gitignore/tracking decision for hooks.json | PASS | hooks.json is tracked in git (not gitignored). Confirmed via `git ls-files hooks/hooks.json`. Correct: plugin config should be version-controlled |
+
+### Overall Grade
+
+**Grade: PASS**
+
+All 12 SC items verified with evidence. No WARN or FAIL conditions. Implementation is complete, tests pass (15/15), lint clean, all hooks accounted for (3 global + 2 MUX skill-scoped), no hardcoded paths, correct plugin format.
