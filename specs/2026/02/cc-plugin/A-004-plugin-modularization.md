@@ -1583,6 +1583,11 @@ The core architecture is correct: 6 plugins created with proper structure, distr
 - FIX-4: Update `update-config.sh` `core/` references -- these are intentional self-hosted fallback paths (guarded by `[[ -d "$target/core" ]]`), not plugin self-references; update tests to reflect this distinction via `ALLOWED_TARGET_PATTERNS` instead of file-level exemption
 - FIX-5: Remove `SETUP_SCRIPT_EXEMPTIONS` from `tests/plugins/test_plugin_structure.py` and `EXEMPT_FILES` from `tests/plugins/test_plugin_isolation.sh`; add `ALLOWED_TARGET_PATTERNS` that recognizes `$target/core/` as valid self-hosted fallback paths
 
+### Post-Fixes (Cycle 2)
+
+- FIX-6: Remove unused `import sys` from `tests/plugins/test_plugin_structure.py` line 10 (ruff F401)
+- FIX-7: Remove unused `exempt_patterns` variable from `tests/plugins/test_plugin_structure.py` lines 183-187 (ruff F841)
+
 ## Implement
 
 ### Post-Fixes
@@ -1592,3 +1597,155 @@ The core architecture is correct: 6 plugins created with proper structure, distr
 - TODO-PF3: Delete __pycache__ directory (Status: Done)
 - TODO-PF4: Update update-config.sh core/ references with self-hosted guard documentation (Status: Done)
 - TODO-PF5: Update tests - remove SETUP_SCRIPT_EXEMPTIONS, add ALLOWED_TARGET_PATTERNS (Status: Done)
+
+### Post-Fixes (Cycle 2)
+
+- TODO-PF6: Remove unused `import sys` from `tests/plugins/test_plugin_structure.py` line 10 (Status: Done)
+- TODO-PF7: Remove unused `exempt_patterns` variable from `tests/plugins/test_plugin_structure.py` lines 183-187 (Status: Done)
+
+## Review 2
+
+### Phase 1: Compliance Check
+
+#### Existence Verification
+
+| Deliverable | Exists | Status |
+|-------------|--------|--------|
+| plugins/agentic/.claude-plugin/plugin.json | Yes | OK |
+| plugins/agentic-spec/.claude-plugin/plugin.json | Yes | OK |
+| plugins/agentic-mux/.claude-plugin/plugin.json | Yes | OK |
+| plugins/agentic-git/.claude-plugin/plugin.json | Yes | OK |
+| plugins/agentic-review/.claude-plugin/plugin.json | Yes | OK |
+| plugins/agentic-tools/.claude-plugin/plugin.json | Yes | OK |
+| plugins/agentic/commands/ (10 files) | Yes | OK |
+| plugins/agentic-spec/commands/ (3 files) | Yes | OK |
+| plugins/agentic-mux/commands/ (2 files) | Yes | OK |
+| plugins/agentic-git/commands/ (6 files) | Yes | OK |
+| plugins/agentic-review/commands/ (5 files) | Yes | OK |
+| plugins/agentic-tools/commands/ (9 files) | Yes | OK |
+| plugins/agentic/skills/ (7 dirs) | Yes | OK |
+| plugins/agentic-mux/skills/ (5 dirs) | Yes | OK |
+| plugins/agentic-git/skills/ (3 dirs) | Yes | OK |
+| plugins/agentic-review/skills/ (2 dirs) | Yes | OK |
+| plugins/agentic-tools/skills/ (2 dirs) | Yes | OK |
+| plugins/agentic/agents/ (6 files) | Yes | OK |
+| plugins/agentic-spec/agents/ (spec-command.md + 13 stages) | Yes | OK |
+| plugins/agentic-mux/scripts/tools/ (25 files) | Yes | OK |
+| plugins/agentic-mux/scripts/prompts/ (10 files) | Yes | OK |
+| plugins/agentic-mux/scripts/hooks/ (3 files) | Yes | OK |
+| plugins/agentic/hooks/hooks.json (2 hooks) | Yes | OK |
+| plugins/agentic-tools/hooks/hooks.json (1 hook) | Yes | OK |
+| plugins/agentic-spec/scripts/spec-resolver.sh | Yes | OK |
+| plugins/agentic-spec/scripts/lib/config-loader.sh | Yes | OK |
+| tests/plugins/test_plugin_structure.py | Yes | OK |
+| tests/plugins/test_plugin_isolation.sh | Yes | OK |
+
+#### Requirement Mapping
+
+| Requirement | Status | Evidence |
+|-------------|--------|----------|
+| Each plugin independently functional | MET | All 6 plugins have own plugin.json, commands/, skills/, hooks/ with no cross-plugin refs |
+| Works from ~/.claude/plugins/cache/ | MET | E2E test (Task 20) copies to temp dir and passes 29/29 |
+| No file references outside plugin root | MET | grep AGENTIC_GLOBAL=0, _AGENTIC_ROOT=0, core/lib/=0 across all plugins |
+| ${CLAUDE_PLUGIN_ROOT} is only path variable | MET | All AGENTIC_GLOBAL eliminated; update-config.sh core/ refs are $target/ paths (self-hosted fallback) |
+| Kebab-case naming | MET | agentic, agentic-spec, agentic-mux, agentic-git, agentic-review, agentic-tools |
+| Each plugin passes validate | MET | All JSON valid, all shell syntax passes, all Python syntax passes |
+| Multiple plugins without conflicts | MET | Unique plugin names, no command collisions |
+| Zero dependency on ~/.agents/agentic-config | MET | Zero grep matches |
+| spec-resolver.sh inlined in agentic-spec | MET | scripts/spec-resolver.sh uses CLAUDE_PLUGIN_ROOT, 0 AGENTIC_GLOBAL refs |
+| All spec stage agents use plugin path | MET | 8 agents reference CLAUDE_PLUGIN_ROOT, 0 AGENTIC_GLOBAL |
+| Python tools bundled in agentic-mux | MET | 25 files in scripts/tools/ |
+| Prompts bundled | MET | 10 files in scripts/prompts/ |
+| hooks.json split per plugin | MET | agentic=2 hooks, agentic-tools=1 hook |
+| agentic-root.sh eliminated | MET | 0 sourcing references (1 comment-only in config-loader.sh) |
+
+#### FIX Cycle Verification
+
+| FIX | Status | Evidence |
+|-----|--------|----------|
+| FIX-1: mux-roadmap.md paths | FIXED | 5 refs now use ${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/ |
+| FIX-2: a2a.md paths | FIXED | 2 refs now use ${CLAUDE_PLUGIN_ROOT}/skills/swarm/ |
+| FIX-3: __pycache__ cleanup | FIXED | `find plugins/ -name '__pycache__'` returns empty |
+| FIX-4: update-config.sh core/ refs | FIXED | Refs are $target/core/ (target-project paths), not plugin self-references; correctly justified |
+| FIX-5: Test exemptions removed | FIXED | No SETUP_SCRIPT_EXEMPTIONS in test code; tests handle comments and target-project paths correctly |
+
+**Phase 1 Grade: PASS** -- All deliverables exist, all mandatory requirements MET, all FIX items resolved.
+
+### Phase 2: Code Quality
+
+#### Static Analysis
+
+| File | Lint | Type Check | Status |
+|------|------|------------|--------|
+| tests/plugins/test_plugin_structure.py | 2 errors | 0 errors | WARN |
+| tests/plugins/test_plugin_isolation.sh | N/A (bash -n PASS) | N/A | PASS |
+| plugins/**/*.sh | N/A (all bash -n PASS) | N/A | PASS |
+| plugins/**/*.py | N/A (all ast.parse PASS) | N/A | PASS |
+| plugins/**/*.json | All valid JSON | N/A | PASS |
+
+#### Lint Output
+
+```
+tests/plugins/test_plugin_structure.py:10:8: F401 `sys` imported but unused
+tests/plugins/test_plugin_structure.py:183:9: F841 Local variable `exempt_patterns` is assigned to but never used
+```
+
+#### Type Check Output
+
+```
+tests/plugins/test_plugin_structure.py: 0 errors, 0 warnings, 0 informations
+```
+
+Note: The Cycle 1 pyright errors (SETUP_SCRIPT_EXEMPTIONS undefined at lines 136, 188, 191; unused _dirs, exempt_patterns) have been resolved by the FIX cycle. Pyright now reports 0 errors.
+
+#### Code Quality Metrics
+
+| File | Type Hints | Docstrings | Complexity | Error Handling |
+|------|------------|------------|------------|----------------|
+| test_plugin_structure.py | Yes (return types on all methods) | Present (class-level) | Low | Adequate |
+| test_plugin_isolation.sh | N/A | Header comments | Low | set -euo pipefail |
+
+**Phase 2 Grade: WARN** -- 2 ruff lint errors (F401 unused import, F841 unused variable) in test_plugin_structure.py.
+
+### Grading Matrix
+
+| Phase | Grade | Justification |
+|-------|-------|---------------|
+| Phase 1 (Compliance) | PASS | All deliverables exist, all requirements MET, all FIX items resolved |
+| Phase 2 (Quality) | WARN | 2 lint errors in test file (unused `sys` import, unused `exempt_patterns` variable) |
+| **Final** | **WARN** | Compliance is complete; 2 minor lint issues remain in test code |
+
+### Issues Summary
+
+#### CRITICAL (blocks approval)
+
+None.
+
+#### HIGH (should fix before merge)
+
+None.
+
+#### MEDIUM (recommended fix)
+
+1. `tests/plugins/test_plugin_structure.py:10`: Unused `import sys` -- Fix: remove the import
+2. `tests/plugins/test_plugin_structure.py:183`: Unused variable `exempt_patterns` -- Fix: remove the variable definition (lines 183-187)
+
+#### LOW (optional improvement)
+
+1. MUX hook scripts have comment references to `.claude/skills/mux/cookbook/hooks.md` (line 8 of each) -- cosmetic, comments only
+2. `plugins/agentic-mux/skills/mux/tools/signal.py:101` has `.claude/skills/` string in runtime path validation -- functional pattern detection, not a file reference
+3. `plugins/agentic-mux/skills/mux/agents/proposer.md` has example paths using `$PROJECT_ROOT/.claude/skills/swarm/` -- documentation examples, not executable plugin paths
+
+### Feedback
+
+- [ ] FEEDBACK: `tests/plugins/test_plugin_structure.py` has 2 ruff lint errors: unused `sys` import (line 10) and unused `exempt_patterns` variable (line 183). These indicate leftover artifacts from the FIX cycle that removed SETUP_SCRIPT_EXEMPTIONS but did not clean up all dead code.
+
+### Goal Achievement
+
+**Was the SPEC goal achieved? Yes.**
+
+All 6 plugins are independently functional with correct structure, distribution, manifests, and hooks. The FIX cycle resolved all 5 feedback items from Review 1: mux-roadmap.md paths fixed, a2a.md paths fixed, __pycache__ removed, update-config.sh core/ refs correctly justified as target-project paths, and test exemptions replaced with proper pattern handling. Zero AGENTIC_GLOBAL, zero _AGENTIC_ROOT, zero core/lib/ references remain in plugin code. The 2 remaining issues are minor lint errors in the test file (unused import and unused variable).
+
+### Next Steps
+
+1. Fix 2 ruff lint errors in `tests/plugins/test_plugin_structure.py` (remove unused `sys` import and `exempt_patterns` variable)

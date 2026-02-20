@@ -7,7 +7,6 @@ and no forbidden external references.
 import json
 import os
 import re
-import sys
 import unittest
 from pathlib import Path
 
@@ -180,11 +179,6 @@ class TestNoParentDirectoryTraversal(unittest.TestCase):
         # for linking within target projects (e.g., setup-config.sh, update-config.sh)
         # but should not have source/import paths with ../
         violations: list[str] = []
-        exempt_patterns = [
-            r'ln -sf.*\.\.',      # Symlink operations (target project setup)
-            r'cd.*&&.*\.\./',     # cd to subdirectory then reference parent
-            r'\.\.\/',             # Any ../ in exempt scripts
-        ]
         exempt_files = {
             "update-config.sh", "setup-config.sh", "migrate-existing.sh",
         }
