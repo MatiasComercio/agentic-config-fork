@@ -1,0 +1,11 @@
+{
+  "name": "agentic-review",
+  "description": "Code review workflows - E2E review, PR review, full lifecycle review",
+  "version": "1.0.0",
+  "author": {
+    "name": "Agentic Config"
+  },
+  "repository": "https://github.com/agentic-config/agentic-config",
+  "license": "MIT",
+  "keywords": ["review", "code-review", "e2e", "testing"]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "agentic-spec",
+  "description": "Specification workflow management - create, plan, implement, review, test specs",
+  "version": "1.0.0",
+  "author": {
+    "name": "Agentic Config"
+  },
+  "repository": "https://github.com/agentic-config/agentic-config",
+  "license": "MIT",
+  "keywords": ["spec", "specification", "workflow", "planning"]
+}
