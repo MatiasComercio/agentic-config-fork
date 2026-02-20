@@ -73,6 +73,102 @@ High -- requires careful audit of 54 files and context extraction
 
 ---
 
+## Review
+
+### Task-by-Task Evaluation
+
+#### Task 1 -- hook-writer: Replace external hook path references
+- **Status**: PASS
+- `core/skills/hook-writer/SKILL.md` lines 282-291: Reference Implementations table updated from `core/hooks/pretooluse/` to skill-bundled locations
+- Column header changed from "Location" to "Bundled In" -- matches plan diff exactly
+- 5 hooks listed (up from 3): added mux-orchestrator-guard.py and mux-subagent-guard.py -- improvement over plan (plan showed same 5)
+- Explanatory note about `hooks/` subdirectory convention added
+- `grep "core/hooks/pretooluse" core/skills/hook-writer/SKILL.md` returns zero matches
+
+#### Task 2 -- mux-subagent: Bundle guard script and update hook path
+- **Status**: PASS
+- Guard script copied to `core/skills/mux-subagent/hooks/mux-subagent-guard.py` -- file exists
+- `diff` confirms IDENTICAL to source `core/hooks/pretooluse/mux-subagent-guard.py`
+- Frontmatter hook command updated from `.agentic-config.json` traversal to `uv run --no-project --script hooks/mux-subagent-guard.py` (SKILL.md line 8) -- matches plan
+- `description` frontmatter was added (not in plan but improves AC6 compliance) -- positive deviation
+
+#### Task 3 -- mux: Bundle guard script and update hook path
+- **Status**: PASS
+- Guard script copied to `core/skills/mux/hooks/mux-orchestrator-guard.py` -- file exists
+- `diff` confirms IDENTICAL to source `core/hooks/pretooluse/mux-orchestrator-guard.py`
+- Frontmatter hook command updated to `uv run --no-project --script hooks/mux-orchestrator-guard.py` (SKILL.md line 18) -- matches plan
+- No `.agentic-config.json` references remain
+
+#### Task 4 -- gsuite: Replace external path references
+- **Status**: PASS
+- SKILL.md line 44: `tools/` (skill-relative) replaces `core/skills/gsuite/tools/` -- matches plan
+- SKILL.md lines 48, 66, 74: `~/.agents/customization/gsuite/` replaces `$AGENTIC_GLOBAL/customization/gsuite/` -- matches plan
+- `cookbook/preferences.md`: zero `$AGENTIC_GLOBAL` references -- all replaced with `~/.agents/customization/gsuite`
+- `cookbook/people.md`: zero `$AGENTIC_GLOBAL` references -- all replaced with `~/.agents/customization/gsuite`
+- **Note**: `cookbook/people.md` still has 3 occurrences of `core/skills/gsuite/tools/people.py`. These were NOT in the plan scope (plan only targeted `$AGENTIC_GLOBAL` in cookbook files and `core/skills/gsuite/tools/` in SKILL.md only). Other cookbook files (gmail.md, comments.md, gcalendar.md, auth.md, docs.md, mermaid.md, orchestration.md, tasks.md) and prompt files also have `core/skills/gsuite/tools/` paths. These are instructional command examples, not operational dependencies -- they tell agents what commands to run, and agents execute in project context where the path is valid. Does NOT affect achieving spec goal for Phase 1 (self-containment of the 5 SKILL.md files). Proper fix belongs in a future Phase 2+ spec for full gsuite cookbook migration.
+
+#### Task 5 -- mux-ospec: Replace all external dependencies
+- **Status**: PASS
+- Step 5a: INPUT & PATHS block replaced (lines 65-81). `$AGENTIC_GLOBAL` path resolution replaced with project-relative `MUX_TOOLS` and spec-resolver fallback pattern -- matches plan
+- Step 5b: REVIEW agent template (line 275) uses `.claude/skills/mux-ospec/agents/spec-reviewer.md` -- matches plan
+- Step 5c: FIX agent template (line 297) uses `.claude/skills/mux-ospec/agents/spec-fixer.md` -- matches plan
+- Step 5d: TEST agent template (line 320) uses `.claude/skills/mux-ospec/agents/spec-tester.md` -- matches plan
+- Step 5e: SENTINEL agent template (line 361) uses `.claude/skills/mux-ospec/agents/validator.md` -- matches plan
+- Step 5f: TOOLS section (lines 380-382) uses inline `.claude/skills/mux/tools/` paths instead of `$MUX_TOOLS` -- matches plan
+- Step 5g: BEHAVIOR DEFAULTS section (lines 511-521) added with auto_commit=prompt, auto_push=false, auto_answer_feedback=false -- matches plan
+- `grep -c "AGENTIC_GLOBAL" core/skills/mux-ospec/SKILL.md` returns 0
+- `grep -c "core/lib/spec-resolver" core/skills/mux-ospec/SKILL.md` returns 0
+
+#### Task 6 -- mux: Add behavior defaults section
+- **Status**: PASS
+- BEHAVIOR DEFAULTS section added at lines 334-343 with all 3 settings -- matches plan exactly
+
+#### Task 7 -- Validate isolation
+- **Status**: PASS
+- AC1: No AGENTS.md refs in core/skills/ -- PASS
+- AC2: No AGENTIC_GLOBAL in migrated skills -- PASS
+- AC3: No .agentic-config.json in migrated skills -- PASS
+- AC4: No core/hooks/pretooluse/ in migrated skills -- PASS
+- AC5: auto_commit in mux/SKILL.md and mux-ospec/SKILL.md -- PASS
+- AC6: All 19 skills have description frontmatter -- PASS
+- AC7: Bundled hooks exist -- PASS
+
+#### Task 8 -- Lint modified Python files
+- **Status**: PASS (files are exact copies of already-passing originals)
+
+#### Task 9 -- E2E: Simulate plugin-dir isolation
+- **Status**: PASS
+- Hook scripts resolve correctly relative to skill dirs
+- No AGENTIC_GLOBAL or .agentic-config.json in any migrated SKILL.md
+
+#### Task 10 -- Commit
+- **Status**: PASS
+- Commit `8fffb78`: 10 files changed, 424 insertions, 35 deletions
+- Additional file `core/skills/mux/cookbook/hooks.md` was updated (not in plan but coherent -- updated hook script locations table to match new bundled paths)
+- Commit message matches plan with minor addition ("add description frontmatter" for mux-subagent, "mux/cookbook/hooks.md" update)
+
+### Test Coverage Evaluation
+- No unit tests or e2e tests written -- spec did not require them
+- Task 7 and 9 serve as validation scripts (grep-based acceptance checks)
+- Behavior is path-reference-only changes; guard scripts are exact copies (diff-verified), so no behavioral regression expected
+
+### Deviations
+1. **Extra file modified**: `core/skills/mux/cookbook/hooks.md` was updated (not in plan Files list). Positive deviation -- keeps hook location documentation consistent with the migration.
+2. **mux-subagent description added**: `description` frontmatter was added to mux-subagent (not explicitly in plan Tasks 2). Positive deviation -- helps meet AC6.
+3. **gsuite cookbook files retain `core/skills/gsuite/tools/` paths**: `people.md`, `gmail.md`, `comments.md`, etc. still reference `core/skills/gsuite/tools/`. NOT a negative deviation -- plan explicitly scoped only `$AGENTIC_GLOBAL` replacement in cookbook files and `core/skills/gsuite/tools/` replacement only in SKILL.md. These cookbook paths are instructional (tell agents what commands to run in project context) not operational dependencies of the skill itself.
+
+### Feedback
+(no blocking feedback items)
+
+### Goal Assessment
+**Yes** -- The spec goal of making every skill fully self-contained with zero dependency on AGENTS.md or external documentation files was achieved for the 5 in-scope skills. All acceptance criteria pass. Remaining `core/skills/gsuite/tools/` paths in cookbook files are instructional references that function correctly in project context and are explicitly out of scope for Phase 1.
+
+### Next Steps
+- Phase 2+: Migrate remaining commands to skills format (separate specs per A-002 Scope Note)
+- Consider migrating gsuite cookbook `core/skills/gsuite/tools/` paths to skill-relative `tools/` paths for full plugin isolation of cookbook files (low priority -- instructional, not operational)
+
+---
+
 ## Implement
 
 ### TODO
