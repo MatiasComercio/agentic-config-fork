@@ -62,15 +62,22 @@ Parse $ARGUMENTS: MODIFIER (full/lean/leanest), SPEC_PATH or INLINE_PROMPT, FLAG
 
 **CREATE Detection**: If SPEC_PATH does not resolve to an existing file, or first argument is "CREATE", or arguments contain "create spec"/"new spec"/"generate spec", treat as CREATE stage input. The remaining text becomes the inline prompt for /spec CREATE.
 
-```bash
-_agp=""; [[ -f ~/.agents/.path ]] && _agp=$(<~/.agents/.path)
-AGENTIC_GLOBAL="${AGENTIC_CONFIG_PATH:-${_agp:-$HOME/.agents/agentic-config}}"
-unset _agp
-MUX_TOOLS="$AGENTIC_GLOBAL/core/skills/mux/tools"
+MUX tools are available at `.claude/skills/mux/tools/` relative to the project root.
 
-# Resolve external specs path (supports EXT_SPECS_REPO_URL configuration)
-source "$AGENTIC_GLOBAL/core/lib/spec-resolver.sh"
-SPEC_PATH=$(resolve_spec_path "$SPEC_PATH")
+```
+MUX_TOOLS=".claude/skills/mux/tools"
+```
+
+Spec path resolution uses the project's spec-resolver when available:
+```bash
+# Resolve spec path (project-local, no global dependency)
+if [[ -f .claude/lib/spec-resolver.sh ]]; then
+  source .claude/lib/spec-resolver.sh
+  SPEC_PATH=$(resolve_spec_path "$SPEC_PATH")
+else
+  # Fallback: spec path is used as-is (relative to project root)
+  SPEC_PATH="specs/$SPEC_PATH"
+fi
 ```
 
 **CRITICAL PATH RULE: `{session}` is ALWAYS a RELATIVE path from project root (e.g., `tmp/mux/20260209-1430-topic`). It is NEVER absolute. The `tmp/` prefix refers to a project-local directory, NOT the system `/tmp/`. When passing `{session}` or any signal path to subagents, include this warning: "Path is RELATIVE to project root. Do NOT prepend '/'."**
@@ -265,7 +272,7 @@ Task(prompt="""THINK VERY HARD; TAKE YOUR TIME.
 Your FIRST and MANDATORY action:
 Skill(skill="spec", args="REVIEW {spec_path}")
 
-ENHANCEMENT: Also read agents/spec-reviewer.md at {AGENTIC_GLOBAL}/core/skills/mux-ospec/agents/spec-reviewer.md for additional review criteria beyond /spec defaults.
+ENHANCEMENT: Also read the spec-reviewer agent definition at .claude/skills/mux-ospec/agents/spec-reviewer.md for additional review criteria beyond /spec defaults.
 
 DO NOT invent your own review criteria. DO NOT fix issues (only report them).
 CRITICAL: Be ruthlessly honest. ONLY grade PASS if ALL checks pass. WARN is NOT "good enough" - it triggers a FIX cycle.
@@ -287,7 +294,7 @@ Task(prompt="""THINK VERY HARD; TAKE YOUR TIME.
 Your FIRST and MANDATORY action:
 Skill(skill="spec", args="FIX {spec_path}")
 
-ENHANCEMENT: Also read agents/spec-fixer.md at {AGENTIC_GLOBAL}/core/skills/mux-ospec/agents/spec-fixer.md for context-preserving fix protocol.
+ENHANCEMENT: Also read the spec-fixer agent definition at .claude/skills/mux-ospec/agents/spec-fixer.md for context-preserving fix protocol.
 REVIEW REPORT: {session}/reviews/phase-{N}-review-{cycle}.md
 
 DO NOT invent fixes outside the review findings. DO NOT delete working code.
@@ -310,7 +317,7 @@ Task(prompt="""THINK VERY HARD; TAKE YOUR TIME.
 Your FIRST and MANDATORY action:
 Skill(skill="spec", args="TEST {spec_path}")
 
-ENHANCEMENT: Also read agents/spec-tester.md at {AGENTIC_GLOBAL}/core/skills/mux-ospec/agents/spec-tester.md for adaptive test execution and framework detection.
+ENHANCEMENT: Also read the spec-tester agent definition at .claude/skills/mux-ospec/agents/spec-tester.md for adaptive test execution and framework detection.
 
 DO NOT write tests yourself. DO NOT skip execution. DO NOT fabricate results.
 If Skill fails: RETURN "STAGE_FAILED"
@@ -351,7 +358,7 @@ Task(prompt="""THINK VERY HARD; TAKE YOUR TIME.
 Your FIRST and MANDATORY action:
 Skill(skill="spec", args="SENTINEL {spec_path}")
 
-ENHANCEMENT: Also read agents/sentinel.md at {AGENTIC_GLOBAL}/core/skills/mux-ospec/agents/sentinel.md for cross-phase coordination review criteria.
+ENHANCEMENT: Also read the sentinel agent definition at .claude/skills/mux-ospec/agents/validator.md for cross-phase coordination review criteria.
 
 DO NOT approve incomplete work. DO NOT override the grade.
 CRITICAL: ONLY grade=PASS completes the workflow. WARN is NOT acceptable.
@@ -370,9 +377,9 @@ RETURN: "STAGE_SENTINEL_COMPLETE grade={PASS|WARN|FAIL}"
 ## TOOLS
 
 ```bash
-uv run $MUX_TOOLS/session.py "mux-ospec-{topic}"
-uv run $MUX_TOOLS/signal.py $PATH --status success
-uv run $MUX_TOOLS/check-signals.py $DIR --expected N
+uv run .claude/skills/mux/tools/session.py "mux-ospec-{topic}"
+uv run .claude/skills/mux/tools/signal.py $PATH --status success
+uv run .claude/skills/mux/tools/check-signals.py $DIR --expected N
 ```
 
 ## LESSONS LEARNED (HARDCODED - NEVER VIOLATE)
@@ -500,6 +507,18 @@ automatically cleaned up when the skill finishes.
 | **Bash Whitelist** | Only `mkdir -p`, `ls`, `uv run tools/*` allowed |
 | **Subagent Protocol** | Workers return `0` -> runtime task-notification -> proceed |
 | **Fail-Closed** | Hook errors -> BLOCK (not allow) |
+
+## BEHAVIOR DEFAULTS
+
+These defaults apply to all subagents delegated by mux-ospec:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| auto_commit | prompt | Always ask before committing (never auto-commit) |
+| auto_push | false | Never auto-push to remote |
+| auto_answer_feedback | false | Never auto-answer feedback prompts |
+
+Include these defaults in every stage agent Task() prompt preamble.
 
 ---
 

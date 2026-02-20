@@ -41,11 +41,11 @@ For delegation patterns and examples, see `cookbook/orchestration.md`.
 
 ## Conventions
 
-**Tools:** All PEP 723 uv scripts in `core/skills/gsuite/tools/`. All support `--help` and `--account/-a <email>`. Verify exact tool names first (`ls tools/`) - naming is inconsistent (e.g., `gcalendar` vs `docs`).
+**Tools:** All PEP 723 uv scripts in `tools/` (skill-relative). All support `--help` and `--account/-a <email>`. Verify exact tool names first (`ls tools/`) - naming is inconsistent (e.g., `gcalendar` vs `docs`).
 
 **Cookbook:** `<tool>.py` -> `cookbook/<tool>.md` (MANDATORY read before executing). If cookbook missing, check `<tool>.py --help` directly.
 
-**Customization:** `<tool>.py` -> `$AGENTIC_GLOBAL/customization/gsuite/<tool>.md`
+**Customization:** `<tool>.py` -> `~/.agents/customization/gsuite/<tool>.md`
 
 **Comment Loop Workflow:** For agent-directed comment workflows, see `cookbook/comments.md`. Default filter: `@ac` (agent-directed comments).
 
@@ -63,7 +63,7 @@ For delegation patterns and examples, see `cookbook/orchestration.md`.
 
 ### 2. Load Preferences (BLOCKING)
 **STOP. Check customization BEFORE any tool execution or API search.**
-Check `$AGENTIC_GLOBAL/customization/gsuite/` for:
+Check `~/.agents/customization/gsuite/` for:
 - `index.md` (always)
 - `<tool>.md` (if exists)
 - `people.md` (if name mentioned)
@@ -71,7 +71,7 @@ Check `$AGENTIC_GLOBAL/customization/gsuite/` for:
 ### 3. Resolve People (BLOCKING)
 **NEVER search People API before checking customization.**
 If name (not email) mentioned:
-1. **FIRST**: Check `$AGENTIC_GLOBAL/customization/gsuite/people.md`
+1. **FIRST**: Check `~/.agents/customization/gsuite/people.md`
 2. **ONLY IF NOT FOUND**: Fall back to People API via `cookbook/people.md`
 3. Handle ambiguous matches via AskUserQuestion
 

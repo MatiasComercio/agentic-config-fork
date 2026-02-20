@@ -1,10 +1,11 @@
 ---
 name: mux-subagent
+description: MUX subagent protocol enforcer. Activates file-based communication protocol, blocks TaskOutput tool, enforces return code convention (0=success), and ensures signal file creation. Load as MANDATORY FIRST ACTION in all MUX-delegated subagents.
 hooks:
   PreToolUse:
     - matcher: "TaskOutput"
       type: command
-      command: "python3 \"$(d=\"$PWD\"; while [ ! -f \"$d/.agentic-config.json\" ] && [ \"$d\" != / ]; do d=\"$(dirname \"$d\")\"; done; r=\"$d\"; [ \"$r\" = / ] && r=\"$HOME/.agents/agentic-config\"; echo \"$r\")/core/hooks/pretooluse/mux-subagent-guard.py\""
+      command: "uv run --no-project --script hooks/mux-subagent-guard.py"
 ---
 
 # MUX Subagent Protocol

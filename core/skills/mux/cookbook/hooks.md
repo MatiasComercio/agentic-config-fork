@@ -151,7 +151,7 @@ MUX skill hooks add to these; they do not replace them. All matching hooks run i
 
 | Script | Location | Scope |
 |--------|----------|-------|
-| `mux-orchestrator-guard.py` | `core/hooks/pretooluse/` | Orchestrator only (via mux.md frontmatter) |
-| `mux-subagent-guard.py` | `core/hooks/pretooluse/` | Subagents only (via mux-subagent.md frontmatter) |
+| `mux-orchestrator-guard.py` | `core/skills/mux/hooks/` | Orchestrator only (via mux.md frontmatter) |
+| `mux-subagent-guard.py` | `core/skills/mux-subagent/hooks/` | Subagents only (via mux-subagent.md frontmatter) |
 
 Both scripts are fail-closed: any error in the hook results in DENY (not ALLOW).

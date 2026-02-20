@@ -15,7 +15,7 @@ hooks:
     - matcher: "Read|Write|Edit|NotebookEdit|Grep|Glob|WebSearch|WebFetch|TaskOutput|Skill|Bash|Task"
       hooks:
         - type: command
-          command: "bash -c 'AGENTIC_ROOT=\"$PWD\"; while [ ! -f \"$AGENTIC_ROOT/.agentic-config.json\" ] && [ \"$AGENTIC_ROOT\" != \"/\" ]; do AGENTIC_ROOT=$(dirname \"$AGENTIC_ROOT\"); done; cd \"$AGENTIC_ROOT\" && uv run --no-project --script .claude/hooks/pretooluse/mux-orchestrator-guard.py'"
+          command: "uv run --no-project --script hooks/mux-orchestrator-guard.py"
 ---
 
 # MUX - Delegation Protocol
@@ -330,3 +330,15 @@ This cleans up the session marker. Skill-scoped hooks are automatically cleaned 
 | **Report Access** | Only via `extract-summary.py` -- Read is BLOCKED |
 | **Subagent Protocol** | All subagents load mux-subagent skill, return `0` only |
 | **Fail-Closed** | Hook errors -> BLOCK (not allow) |
+
+## BEHAVIOR DEFAULTS
+
+These defaults apply to all subagents delegated by MUX:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| auto_commit | prompt | Always ask before committing (never auto-commit) |
+| auto_push | false | Never auto-push to remote |
+| auto_answer_feedback | false | Never auto-answer feedback prompts |
+
+Include these defaults in every subagent Task() prompt preamble.

@@ -82,10 +82,10 @@ AskUserQuestion:
 
 ```bash
 # Ensure directory exists
-mkdir -p $AGENTIC_GLOBAL/customization/gsuite
+mkdir -p ~/.agents/customization/gsuite
 
 # Append to appropriate file
-cat >> $AGENTIC_GLOBAL/customization/gsuite/<tool>.md << 'EOF'
+cat >> ~/.agents/customization/gsuite/<tool>.md << 'EOF'
 - <preference description>
 EOF
 ```
@@ -95,7 +95,7 @@ EOF
 ### File Structure
 
 ```
-$AGENTIC_GLOBAL/customization/gsuite/
+~/.agents/customization/gsuite/
   index.md       # Entry point with routing
   gcalendar.md   # Calendar preferences
   gmail.md       # Email preferences
@@ -220,7 +220,7 @@ User: "Create meeting with John on my work calendar"
 ### Bash Reference
 
 ```bash
-PREFS="$AGENTIC_GLOBAL/customization/gsuite"
+PREFS="~/.agents/customization/gsuite"
 
 # Always check index first
 [[ -f "$PREFS/index.md" ]] && cat "$PREFS/index.md"

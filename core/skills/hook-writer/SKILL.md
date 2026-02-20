@@ -279,11 +279,16 @@ except Exception as e:
 
 ## Reference Implementations
 
-| Hook | Purpose | Location |
-|------|---------|----------|
-| dry-run-guard.py | Block file-writing in dry-run mode | `core/hooks/pretooluse/` |
-| git-commit-guard.py | Block --no-verify flag | `core/hooks/pretooluse/` |
-| gsuite-public-asset-guard.py | Block public asset creation | `core/hooks/pretooluse/` |
+| Hook | Purpose | Bundled In |
+|------|---------|------------|
+| dry-run-guard.py | Block file-writing in dry-run mode | `dry-run` skill |
+| git-commit-guard.py | Block --no-verify flag | project `.claude/hooks/` |
+| gsuite-public-asset-guard.py | Block public asset creation | `gsuite` skill |
+| mux-orchestrator-guard.py | Block forbidden tools in MUX orchestrator | `mux` skill |
+| mux-subagent-guard.py | Block TaskOutput for MUX subagents | `mux-subagent` skill |
+
+Hooks are bundled within their respective skill directories under `hooks/` subdirectory.
+For standalone hooks not tied to a skill, see the project's `.claude/hooks/` directory.
 
 ## Workflow
 

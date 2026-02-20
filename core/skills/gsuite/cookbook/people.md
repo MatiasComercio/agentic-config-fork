@@ -22,9 +22,9 @@ Look up known aliases before calling API:
 
 ```bash
 # Check for people.md customization (global aliases)
-cat $AGENTIC_GLOBAL/customization/gsuite/people.md 2>/dev/null
+cat ~/.agents/customization/gsuite/people.md 2>/dev/null
 # Also check tool-specific customizations (e.g., gcalendar.md may have aliases)
-cat $AGENTIC_GLOBAL/customization/gsuite/gcalendar.md 2>/dev/null
+cat ~/.agents/customization/gsuite/gcalendar.md 2>/dev/null
 ```
 
 ### 2. If Not in Preferences, Use People API
@@ -126,7 +126,7 @@ AskUserQuestion:
 ### Step 4: Create Directory if Needed
 
 ```bash
-mkdir -p $AGENTIC_GLOBAL/customization/gsuite
+mkdir -p ~/.agents/customization/gsuite
 ```
 
 ### Example people.md
