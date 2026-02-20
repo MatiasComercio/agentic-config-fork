@@ -73,6 +73,25 @@ High -- requires careful audit of 54 files and context extraction
 
 ---
 
+## Implement
+
+### TODO
+
+- [x] Task 1 -- hook-writer: Replace external hook path references | Status: Done
+- [x] Task 2 -- mux-subagent: Bundle guard script and update hook path | Status: Done
+- [x] Task 3 -- mux: Bundle guard script and update hook path | Status: Done
+- [x] Task 4 -- gsuite: Replace external path references | Status: Done
+- [x] Task 5 -- mux-ospec: Replace all external dependencies | Status: Done
+- [x] Task 6 -- mux: Add behavior defaults section | Status: Done
+- [x] Task 7 -- Validate isolation | Status: Done
+- [x] Task 8 -- Lint modified Python files | Status: Done
+- [x] Task 9 -- E2E: Simulate plugin-dir isolation | Status: Done
+- [x] Task 10 -- Commit | Status: Done
+
+Implementation commit: `8fffb78`
+
+---
+
 ## Plan
 
 ### Scope Note
