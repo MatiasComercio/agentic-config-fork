@@ -4,6 +4,17 @@ All notable changes to agentic-config.
 
 ## [Unreleased]
 
+### Changed
+
+- 5 skills migrated to self-contained plugin isolation (no AGENTS.md, AGENTIC_GLOBAL, or .agentic-config.json dependencies):
+  - `hook-writer`: updated reference table to use skill-bundled hook locations
+  - `mux-subagent`: bundled guard script in `hooks/`, removed `.agentic-config.json` traversal
+  - `mux`: bundled orchestrator guard script in `hooks/`, removed `.agentic-config.json` traversal
+  - `gsuite`: replaced `$AGENTIC_GLOBAL/customization/` with `~/.agents/customization/`, used skill-relative `tools/` path
+  - `mux-ospec`: replaced `$AGENTIC_GLOBAL` path resolution with project-relative paths, replaced absolute agent file refs with `.claude/skills/mux-ospec/agents/` paths
+- `mux` and `mux-ospec`: behavior defaults (auto_commit=prompt, auto_push=false, auto_answer_feedback=false) embedded in SKILL.md
+- All 19 skills now have `description` frontmatter for natural language discovery
+
 ## [0.1.19] - 2026-02-20
 
 ### Added

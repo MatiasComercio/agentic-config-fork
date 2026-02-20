@@ -169,6 +169,16 @@ High -- requires careful audit of 54 files and context extraction
 
 ---
 
+## Updated Doc
+
+### Files Updated
+- `CHANGELOG.md`
+
+### Changes Made
+- Added `[Unreleased]` entry documenting: 5 skills migrated to self-contained plugin isolation, bundled hook scripts per skill, behavior defaults in mux + mux-ospec, all 19 skills have description frontmatter
+
+---
+
 ## Test Evidence & Outputs
 
 ### Commands Run
