@@ -1749,3 +1749,145 @@ All 6 plugins are independently functional with correct structure, distribution,
 ### Next Steps
 
 1. Fix 2 ruff lint errors in `tests/plugins/test_plugin_structure.py` (remove unused `sys` import and `exempt_patterns` variable)
+
+## Review 3
+
+### Phase 1: Compliance Check
+
+#### Existence Verification
+
+All 6 plugins confirmed present with correct structure:
+
+| Plugin | plugin.json | commands | skills | hooks | Status |
+|--------|------------|----------|--------|-------|--------|
+| agentic | OK | 10 | 7 | 2 | OK |
+| agentic-spec | OK | 3 | 0 | 0 | OK |
+| agentic-mux | OK | 2 | 5 | 0 | OK |
+| agentic-git | OK | 6 | 3 | 0 | OK |
+| agentic-review | OK | 5 | 2 | 0 | OK |
+| agentic-tools | OK | 9 | 2 | 1 | OK |
+
+Supporting deliverables verified:
+- `plugins/agentic-mux/scripts/tools/`: 7 main Python tools + lib/ + config/ + tests/
+- `plugins/agentic-mux/scripts/prompts/`: 10 prompt files
+- `plugins/agentic-mux/scripts/hooks/`: 3 MUX dynamic hooks
+- `plugins/agentic-spec/scripts/spec-resolver.sh`: uses CLAUDE_PLUGIN_ROOT
+- `plugins/agentic-spec/scripts/lib/config-loader.sh`: inlined get_project_root()
+- `tests/plugins/test_plugin_structure.py`: 18 tests
+- `tests/plugins/test_plugin_isolation.sh`: 29 tests
+
+#### Requirement Mapping
+
+| Requirement | Status | Evidence |
+|-------------|--------|----------|
+| Each plugin independently functional | MET | All 6 have own plugin.json, commands/, skills/, hooks/ |
+| Works from ~/.claude/plugins/cache/ | MET | E2E test copies to tmpdir, passes 29/29 |
+| No file references outside plugin root | MET | grep AGENTIC_GLOBAL=0, _AGENTIC_ROOT=0, core/lib/=0 |
+| ${CLAUDE_PLUGIN_ROOT} is only path variable | MET | All legacy vars eliminated |
+| Kebab-case naming | MET | All 6 plugin names are kebab-case |
+| Each plugin passes validate | MET | All JSON valid, all syntax checks pass |
+| Multiple plugins without conflicts | MET | Unique names, no collisions |
+| Zero dependency on ~/.agents/agentic-config | MET | Zero grep matches |
+| spec-resolver.sh inlined in agentic-spec | MET | CLAUDE_PLUGIN_ROOT, 0 AGENTIC_GLOBAL |
+| All spec stage agents use plugin path | MET | 8 agents, all use CLAUDE_PLUGIN_ROOT |
+| Python tools bundled in agentic-mux | MET | scripts/tools/ present |
+| Prompts bundled | MET | 10 files in scripts/prompts/ |
+| hooks.json split per plugin | MET | agentic=2, agentic-tools=1 |
+| agentic-root.sh eliminated | MET | 0 sourcing refs (1 comment in config-loader.sh) |
+
+#### FIX Cycle Verification (All Cycles)
+
+| FIX | Cycle | Status | Evidence |
+|-----|-------|--------|----------|
+| FIX-1: mux-roadmap.md paths | 1 | FIXED | 5 refs now use ${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/ |
+| FIX-2: a2a.md paths | 1 | FIXED | 0 `.claude/skills/swarm/` refs remain |
+| FIX-3: __pycache__ cleanup | 1 | FIXED | `find plugins/ -name '__pycache__'` returns empty |
+| FIX-4: update-config.sh core/ refs | 1 | FIXED | Refs are $target/core/ (target-project paths) |
+| FIX-5: Test exemptions removed | 1 | FIXED | No SETUP_SCRIPT_EXEMPTIONS in test code |
+| FIX-6: Remove unused `import sys` | 2 | FIXED | Line 10 no longer has sys import |
+| FIX-7: Remove unused `exempt_patterns` | 2 | FIXED | Variable definition removed from test |
+
+**Phase 1 Grade: PASS** -- All deliverables exist, all mandatory requirements MET, all FIX items from all cycles resolved.
+
+### Phase 2: Code Quality
+
+#### Static Analysis
+
+| File | Lint | Type Check | Status |
+|------|------|------------|--------|
+| tests/plugins/test_plugin_structure.py | 0 errors | 0 errors | PASS |
+| tests/plugins/test_plugin_isolation.sh | bash -n PASS | N/A | PASS |
+| plugins/**/*.sh | all bash -n PASS | N/A | PASS |
+| plugins/**/*.py | all ast.parse PASS | N/A | PASS |
+| plugins/**/*.json | all valid JSON | N/A | PASS |
+
+#### Lint Output
+
+```
+$ uv run ruff check tests/plugins/test_plugin_structure.py
+All checks passed!
+```
+
+#### Type Check Output
+
+```
+$ uv run pyright tests/plugins/test_plugin_structure.py
+0 errors, 0 warnings, 0 informations
+```
+
+#### Test Results
+
+```
+$ uv run python -m unittest tests/plugins/test_plugin_structure.py -v
+Ran 18 tests in 0.044s -- OK
+
+$ bash tests/plugins/test_plugin_isolation.sh
+Results: 29 passed, 0 failed
+```
+
+#### Code Quality Metrics
+
+| File | Type Hints | Docstrings | Complexity | Error Handling |
+|------|------------|------------|------------|----------------|
+| test_plugin_structure.py | Yes (return types on all methods) | Present (class + method level) | Low | Adequate |
+| test_plugin_isolation.sh | N/A | Header comments | Low | set -euo pipefail |
+
+**Phase 2 Grade: PASS** -- Zero lint errors, zero type errors, all tests pass, quality adequate.
+
+### Grading Matrix
+
+| Phase | Grade | Justification |
+|-------|-------|---------------|
+| Phase 1 (Compliance) | PASS | All deliverables exist, all requirements MET, all 7 FIX items resolved |
+| Phase 2 (Quality) | PASS | 0 lint errors, 0 type errors, 18/18 unit tests pass, 29/29 E2E tests pass |
+| **Final** | **PASS** | Full compliance and quality achieved after 3 review cycles |
+
+### Issues Summary
+
+#### CRITICAL (blocks approval)
+
+None.
+
+#### HIGH (should fix before merge)
+
+None.
+
+#### MEDIUM (recommended fix)
+
+None.
+
+#### LOW (optional improvement)
+
+1. MUX hook scripts have comment references to `.claude/skills/mux/cookbook/hooks.md` (line 8 of each) -- cosmetic, comments only
+2. `plugins/agentic-mux/skills/mux/tools/signal.py:101` has `.claude/skills/` string in runtime path validation -- functional pattern detection, not a file reference
+3. `plugins/agentic-mux/skills/mux/agents/proposer.md` has example paths using `$PROJECT_ROOT/.claude/skills/swarm/` -- documentation examples, not executable plugin paths
+
+### Goal Achievement
+
+**Was the SPEC goal achieved? Yes.**
+
+All 6 plugins are independently functional with correct structure, distribution, manifests, and hooks. All 7 FIX items across 2 cycles have been resolved. Zero AGENTIC_GLOBAL, zero _AGENTIC_ROOT, zero core/lib/ references remain in plugin code. The test file is clean: 0 ruff errors, 0 pyright errors. All 18 unit tests and all 29 E2E isolation tests pass. Each plugin works from isolated cache directory.
+
+### Next Steps
+
+None required. Spec is complete and ready for merge.
