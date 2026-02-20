@@ -1514,3 +1514,61 @@ The implementor should commit code changes FIRST, then spec changes.
 | hooks.json split per plugin | Task 10 creates per-plugin hooks.json (agentic: 2 hooks, agentic-tools: 1 hook) | L43 |
 | MUX dynamic hooks bundled | Task 9 copies 3 MUX hooks to agentic-mux scripts/hooks/ | L68 |
 | agentic-root.sh eliminated | Task 16 removes all sourcing; Task 17 confirms zero references | L65 |
+
+## Review
+
+### Task-by-Task Compliance
+
+| Task | Status | Deviation |
+|------|--------|-----------|
+| Task 1 - Directory scaffolding | PASS | All 6 plugins created with expected directory trees |
+| Task 2 - plugin.json manifests | PASS | All 6 valid JSON, unique names, correct metadata |
+| Task 3 - Plugin-aware spec-resolver | PASS | spec-resolver.sh, config-loader.sh, external-specs.sh all use ${CLAUDE_PLUGIN_ROOT}; zero AGENTIC_GLOBAL refs; syntax checks pass |
+| Task 4 - Distribute commands | PASS | agentic=10, agentic-spec=3, agentic-mux=2, agentic-git=6, agentic-review=5, agentic-tools=9 -- exact match |
+| Task 5 - Distribute skills | PASS | agentic=7, agentic-mux=5, agentic-git=3, agentic-review=2, agentic-tools=2, agentic-spec=0 -- exact match |
+| Task 6 - Distribute agents | PASS | agentic=6 agent files, agentic-spec=spec-command.md + 13 stage files -- exact match |
+| Task 7 - Bundle Python tools | PASS | spawn.py, spec.py, researcher.py, ospec.py, oresearch.py, coordinator.py, campaign.py + lib/ + config/ + tests/ present |
+| Task 8 - Bundle prompts | PASS | 10 prompt .md files in campaigns/, coordinators/, executors/, orchestrators/ |
+| Task 9 - MUX dynamic hooks | PASS | 3 hook scripts (mux-bash-validator.py, mux-forbidden-tools.py, mux-task-validator.py) |
+| Task 10 - Split hooks.json | PASS | agentic has 2 PreToolUse hooks, agentic-tools has 1; both use ${CLAUDE_PLUGIN_ROOT}; valid JSON |
+| Task 11 - Distribute scripts | PASS | agentic has 6 scripts + 5 lib scripts + 2 hook scripts; agentic-tools has video_query.py |
+| Task 12 - Spec stage agent refs | PASS | All 8 stage agents (CREATE, RESEARCH, PLAN, PLAN_REVIEW, IMPLEMENT, REVIEW, TEST, DOCUMENT) use ${CLAUDE_PLUGIN_ROOT}/scripts/spec-resolver.sh |
+| Task 13 - Command AGENTIC_GLOBAL refs | PASS | Zero AGENTIC_GLOBAL in any plugin command file |
+| Task 14 - Agent AGENTIC_GLOBAL refs | PASS | Zero AGENTIC_GLOBAL in plugins/agentic/agents/ |
+| Task 15 - MUX skill path refs | WARN | MUX SKILL.md files correctly use ${CLAUDE_PLUGIN_ROOT}; however mux-roadmap.md command has 5 hardcoded `.claude/skills/mux/tools/` executable paths that should be ${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/; cookbook a2a.md has 2 more |
+| Task 16 - Agentic scripts root.sh | WARN | update-config.sh still has 11 lines referencing core/hooks/, core/commands/, core/skills/, core/agents/ -- exempted via SETUP_SCRIPT_EXEMPTIONS in tests |
+| Task 17 - Final sweep | WARN | Tests exempt update-config.sh from forbidden pattern checks; 48 total `.claude/skills/` references remain across plugins (some in documentation, some in executable contexts) |
+| Task 18 - Lint/syntax validation | PASS | All JSON valid, all shell scripts pass bash -n, all Python passes ast.parse |
+| Task 19 - Unit tests | PASS | 18/18 tests pass; however tests were adapted with exemptions (SETUP_SCRIPT_EXEMPTIONS) to pass |
+| Task 20 - E2E tests | PASS | 29/29 tests pass; same exemption pattern |
+| Task 21 - Commit | PASS | Committed as ed40ca6 |
+
+### Test Coverage
+
+- Unit tests: 18/18 pass (tests/plugins/test_plugin_structure.py)
+- E2E tests: 29/29 pass (tests/plugins/test_plugin_isolation.sh)
+- Tests cover: plugin existence, manifest validity, command/skill distribution, forbidden patterns, hooks distribution, MUX tools/prompts, spec-resolver, syntax checks
+- Coverage gap: Tests exempt update-config.sh from forbidden pattern checks
+
+### Feedback
+
+- [ ] FEEDBACK: `plugins/agentic-mux/commands/mux-roadmap.md` has 5 executable `.claude/skills/mux/tools/` references (lines 309, 1155, 1404, 1464, 1613) that should use `${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/` -- these are in code blocks that agents execute, not documentation prose
+- [ ] FEEDBACK: `plugins/agentic/scripts/update-config.sh` has 11 lines referencing `core/hooks/`, `core/commands/`, `core/skills/`, `core/agents/` (lines 43, 62-63, 68, 110, 158, 171, 663, 691, 710, 736) -- the tests exempt this file via SETUP_SCRIPT_EXEMPTIONS rather than fixing it
+- [ ] FEEDBACK: `plugins/agentic-mux/skills/mux/tools/__pycache__/` directory exists with a .pyc binary -- should not be shipped in a plugin
+- [ ] FEEDBACK: `plugins/agentic-mux/skills/mux/cookbook/a2a.md` has 2 hardcoded `.claude/skills/swarm/` executable paths (lines 34, 37)
+- [ ] FEEDBACK: MUX hook scripts (mux-bash-validator.py, mux-forbidden-tools.py, mux-task-validator.py) have comment references to `.claude/skills/mux/cookbook/hooks.md` (line 8 each) -- low priority, comments only
+
+### Goal Achievement
+
+**Was the SPEC goal achieved? No.**
+
+The core architecture is correct: 6 plugins created with proper structure, distribution, manifests, and hooks. However, the sweep for forbidden patterns (Task 17 acceptance criterion: "ALL grep commands above return EMPTY") is not fully met. The `update-config.sh` script retains legacy `core/` references and the tests were adapted to exempt it rather than fix it. The `mux-roadmap.md` command has 5 executable `.claude/skills/` paths that would fail in a plugin cache environment. A `__pycache__` directory was shipped in the plugin.
+
+### Next Steps
+
+1. Fix `mux-roadmap.md`: replace 5 `.claude/skills/mux/tools/` references with `${CLAUDE_PLUGIN_ROOT}/skills/mux/tools/`
+2. Fix `update-config.sh`: eliminate or conditionalize all `core/` fallback references
+3. Remove `plugins/agentic-mux/skills/mux/tools/__pycache__/` directory
+4. Fix `cookbook/a2a.md`: replace `.claude/skills/swarm/` with `${CLAUDE_PLUGIN_ROOT}/skills/` equivalent
+5. Update tests to remove SETUP_SCRIPT_EXEMPTIONS once update-config.sh is fixed
+6. Re-run final sweep to confirm zero forbidden patterns
