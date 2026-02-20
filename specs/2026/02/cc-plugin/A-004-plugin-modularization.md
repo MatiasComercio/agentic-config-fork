@@ -1464,6 +1464,30 @@ git commit -m "spec(A-004): IMPLEMENT - plugin modularization"
 
 The implementor should commit code changes FIRST, then spec changes.
 
+## Implement
+
+- TODO-1: Create plugin directory scaffolding (Status: Done)
+- TODO-2: Create plugin.json for each plugin (Status: Done)
+- TODO-3: Create plugin-aware spec-resolver.sh and config-loader.sh (Status: Done)
+- TODO-4: Distribute commands to plugins (Status: Done)
+- TODO-5: Distribute skills to plugins (Status: Done)
+- TODO-6: Distribute agents to plugins (Status: Done)
+- TODO-7: Bundle Python tools into agentic-mux (Status: Done)
+- TODO-8: Bundle prompts into agentic-mux (Status: Done)
+- TODO-9: Bundle MUX dynamic hooks into agentic-mux (Status: Done)
+- TODO-10: Distribute and split hooks.json per plugin (Status: Done)
+- TODO-11: Distribute scripts to plugins (Status: Done)
+- TODO-12: Update spec-resolver references in spec stage agents (Status: Done)
+- TODO-13: Update $AGENTIC_GLOBAL references in commands (Status: Done)
+- TODO-14: Update $AGENTIC_GLOBAL references in agentic agents (Status: Done)
+- TODO-15: Update internal path references in MUX skills (Status: Done)
+- TODO-16: Update agentic scripts to remove agentic-root.sh dependency (Status: Done)
+- TODO-17: Final sweep - eliminate ALL external path references (Status: Done)
+- TODO-18: Lint and syntax validation (Status: Done - 3 commands without frontmatter are inherited from source, not plugin errors)
+- TODO-19: Unit tests - plugin structure validation (Status: Done - 18/18 tests pass)
+- TODO-20: E2E tests - plugin isolation and cache simulation (Status: Done - 29/29 tests pass)
+- TODO-21: Commit (Status: Done) [ed40ca6]
+
 ### Validate
 
 | Requirement | Compliance | Ref |
