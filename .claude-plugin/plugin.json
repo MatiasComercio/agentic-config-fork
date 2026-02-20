@@ -1,6 +1,6 @@
 {
-  "name": "agentic",
-  "description": "Agentic workflow automation for AI-assisted development",
+  "name": "agentic-config",
+  "description": "Agentic workflow automation for AI-assisted development (monorepo root)",
   "version": "1.0.0",
   "author": {
     "name": "Agentic Config"
