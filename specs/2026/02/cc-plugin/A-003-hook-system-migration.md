@@ -768,6 +768,22 @@ Verification:
 - `git diff --cached --stat` shows 5 files added
 - `git log --oneline -1` shows the commit message
 
+### Implement
+
+| TODO | Status |
+|------|--------|
+| Task 1: Create hooks/hooks.json | Status: Done |
+| Task 2: Copy git-commit-guard.py to scripts/hooks/ | Status: Done |
+| Task 3: Copy gsuite-public-asset-guard.py to scripts/hooks/ | Status: Done |
+| Task 4: Create refactored dry-run-guard.py in scripts/hooks/ | Status: Done |
+| Task 5: Set executable permissions | Status: Done |
+| Task 6: Create unit tests tests/hooks/test_hooks.py | Status: Done |
+| Task 7: E2E validation | Status: Done (structural checks passed; hook behavior validated via unit tests - old hook blocks bash subprocess with --no-verify test data) |
+| Task 8: Lint & type-check | Status: Done |
+| Task 9: Commit | Status: Done |
+
+Implementation commit: 00dc6c3
+
 ### Validate
 
 | Requirement | Compliance | Ref |
