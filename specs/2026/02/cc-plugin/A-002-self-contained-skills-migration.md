@@ -169,6 +169,93 @@ High -- requires careful audit of 54 files and context extraction
 
 ---
 
+## Test Evidence & Outputs
+
+### Commands Run
+
+```bash
+# AC1: No AGENTS.md operational deps in skills
+grep -r "AGENTS\.md" core/skills/ --include="*.md" | grep -v "CHANGELOG" | grep -v "_archive"
+# => PASS: No AGENTS.md refs in skills/
+
+# AC2: No AGENTIC_GLOBAL in migrated skills
+grep -r "AGENTIC_GLOBAL" core/skills/hook-writer/ core/skills/mux-subagent/ core/skills/mux/ core/skills/gsuite/ core/skills/mux-ospec/ --include="*.md" --include="*.py"
+# => PASS: No AGENTIC_GLOBAL refs
+
+# AC3: No .agentic-config.json in migrated skills
+grep -r ".agentic-config.json" core/skills/hook-writer/ core/skills/mux-subagent/ core/skills/mux/ core/skills/gsuite/ core/skills/mux-ospec/ --include="*.md"
+# => PASS: No .agentic-config.json refs
+
+# AC4: No core/hooks/pretooluse/ in migrated skills
+grep -r "core/hooks/pretooluse/" core/skills/hook-writer/ core/skills/mux-subagent/ core/skills/mux/ --include="*.md"
+# => PASS: No core/hooks refs
+
+# AC5: Behavior defaults present
+grep -l "auto_commit" core/skills/mux/SKILL.md core/skills/mux-ospec/SKILL.md
+# => core/skills/mux/SKILL.md  core/skills/mux-ospec/SKILL.md  (PASS)
+
+# AC6: All 19 skills have description frontmatter
+# => Skills WITH description: 19 / Skills WITHOUT description: 0 (PASS)
+
+# AC7: Bundled hooks exist
+# => OK: mux-subagent hook bundled  /  OK: mux orchestrator hook bundled
+
+# Hook scripts valid Python (ast.parse)
+# => OK: mux-subagent-guard.py - valid Python
+# => OK: mux-orchestrator-guard.py - valid Python
+
+# Hook scripts identical to originals
+# diff core/hooks/pretooluse/mux-subagent-guard.py core/skills/mux-subagent/hooks/mux-subagent-guard.py
+# => OK: IDENTICAL
+# diff core/hooks/pretooluse/mux-orchestrator-guard.py core/skills/mux/hooks/mux-orchestrator-guard.py
+# => OK: IDENTICAL
+
+# E2E: frontmatter hook commands use bundled paths
+# core/skills/mux-subagent: command: "uv run --no-project --script hooks/mux-subagent-guard.py"
+# core/skills/mux:           command: "uv run --no-project --script hooks/mux-orchestrator-guard.py"
+
+# E2E: self-containment per skill
+# => OK: hook-writer is self-contained (0 external refs)
+# => OK: mux-subagent is self-contained (0 external refs)
+# => OK: mux is self-contained (0 external refs)
+# => OK: gsuite is self-contained (0 external refs)
+# => OK: mux-ospec is self-contained (0 external refs)
+
+# No AGENTIC_GLOBAL in any gsuite skill files
+grep -r "AGENTIC_GLOBAL" core/skills/gsuite/ --include="*.md"
+# => PASS
+
+# BEHAVIOR DEFAULTS present: mux-ospec count=1, mux count=1
+# AGENTIC_GLOBAL in mux-ospec: 0 / core/lib/spec-resolver in mux-ospec: 0
+```
+
+### Pass/Fail Status
+
+All acceptance criteria: PASS
+
+| AC | Check | Result |
+|----|-------|--------|
+| AC1 | No AGENTS.md in skills/ | PASS |
+| AC2 | No AGENTIC_GLOBAL in 5 migrated skills | PASS |
+| AC3 | No .agentic-config.json in 5 migrated skills | PASS |
+| AC4 | No core/hooks/pretooluse/ in migrated skills | PASS |
+| AC5 | auto_commit behavior defaults in mux + mux-ospec | PASS |
+| AC6 | All 19 skills have description frontmatter | PASS |
+| AC7 | Bundled hook scripts exist and are valid Python | PASS |
+| E2E | Hook commands use skill-relative paths | PASS |
+| E2E | All 5 skills self-contained (0 external refs) | PASS |
+| IDENT | Bundled hooks identical to originals | PASS |
+
+### Fixes Applied
+
+None -- all validations passed on first run.
+
+### Summary
+
+All 10 acceptance criteria pass. Five skills (hook-writer, mux-subagent, mux, gsuite, mux-ospec) are self-contained with zero AGENTS.md, AGENTIC_GLOBAL, or .agentic-config.json dependencies. Bundled hook scripts are valid Python and identical to originals. All 19 skills have description frontmatter. Behavior defaults (auto_commit=prompt, auto_push=false, auto_answer_feedback=false) embedded in mux and mux-ospec.
+
+---
+
 ## Implement
 
 ### TODO
