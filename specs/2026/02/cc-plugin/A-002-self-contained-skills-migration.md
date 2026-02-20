@@ -179,6 +179,47 @@ High -- requires careful audit of 54 files and context extraction
 
 ---
 
+## Sentinel
+
+### Independent Verification
+
+All acceptance criteria re-verified independently against codebase at HEAD (`56d70df`).
+
+### Acceptance Criteria Grading
+
+| SC# | Criterion | Check Performed | Grade |
+|-----|-----------|-----------------|-------|
+| AC1 | `grep -r "AGENTS.md" core/skills/` returns zero operational deps | `grep -r "AGENTS\.md" core/skills/ --include="*.md"` excluding CHANGELOG/_archive -- zero matches | PASS |
+| AC2 | No `AGENTIC_GLOBAL` in 5 migrated skills | `grep -r "AGENTIC_GLOBAL" core/skills/{hook-writer,mux-subagent,mux,gsuite,mux-ospec}/` -- zero matches | PASS |
+| AC3 | No `.agentic-config.json` in migrated skills | `grep -r ".agentic-config.json" core/skills/{5 skills}/` -- zero matches | PASS |
+| AC4 | No `core/hooks/pretooluse/` refs in migrated skills | `grep -r "core/hooks/pretooluse/" core/skills/{hook-writer,mux-subagent,mux}/` -- zero matches | PASS |
+| AC5 | Behavior defaults embedded in mux + mux-ospec | `grep -l "auto_commit" core/skills/mux/SKILL.md core/skills/mux-ospec/SKILL.md` -- both present | PASS |
+| AC6 | All 19 skills have `description` frontmatter | Iterated all `core/skills/*/SKILL.md` -- 19/19 have `description:` | PASS |
+| AC7 | Bundled hook scripts exist and are valid | Files exist at `core/skills/mux-subagent/hooks/` and `core/skills/mux/hooks/`; `diff` confirms IDENTICAL to originals | PASS |
+| E2E-1 | Hook commands use skill-relative paths | Frontmatter `command:` in mux-subagent uses `hooks/mux-subagent-guard.py`; mux uses `hooks/mux-orchestrator-guard.py` | PASS |
+| E2E-2 | All 5 skills self-contained (0 external refs) | `grep -l 'AGENTIC_GLOBAL\|\.agentic-config\.json'` per skill -- zero matches in all 5 | PASS |
+| E2E-3 | No behavioral regression | Guard scripts identical (diff verified); changes are path-only, not logic | PASS |
+
+### Commit Chain Verification
+
+| Stage | Commit | Verified |
+|-------|--------|----------|
+| PLAN | `ca28918` | Present in git log |
+| IMPLEMENT | `8fffb78`, `82f4129` | Present in git log |
+| REVIEW | `b4d3a9e` | Present in git log |
+| TEST | `13bfe4e` | Present in git log |
+| DOCUMENT | `56d70df` | Present in git log; CHANGELOG.md updated |
+
+### CHANGELOG Verification
+- `[Unreleased]` section contains A-002 entry with all 5 skills, behavior defaults, description frontmatter documented
+
+### Overall Grade
+**PASS**
+
+All 10 success criteria verified independently. Zero failures. Zero warnings. Spec goal fully achieved for Phase 1.
+
+---
+
 ## Test Evidence & Outputs
 
 ### Commands Run
