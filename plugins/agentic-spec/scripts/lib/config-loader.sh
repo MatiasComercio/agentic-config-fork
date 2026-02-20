@@ -5,7 +5,7 @@
 #   2. .env file
 #   3. .agentic-config.conf.yml file (lowest)
 #
-# Plugin-aware version: no agentic-root.sh dependency
+# Plugin-aware version: self-contained, no external shell dependencies
 # NOTE: Uses pure bash (no external commands) for compatibility with
 # restricted shell environments (e.g., Claude Code)
 
