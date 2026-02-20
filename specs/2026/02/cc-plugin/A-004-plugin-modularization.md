@@ -1924,3 +1924,40 @@ None. All tests passed on first run.
 - Changes made:
   - CHANGELOG: New "Added" bullets for plugin distribution (6 plugins, spec-resolver, config-loader, 2 test files)
   - README: New section between "Supported Project Types" and "Documentation" with plugin table and installation context
+
+## Sentinel
+
+### SC Validation Summary
+
+| SC ID | Description | Grade | Evidence |
+|-------|-------------|-------|----------|
+| SC1 | Each plugin passes validate | PASS | All 6 plugin.json valid JSON, all syntax checks pass |
+| SC2 | Each plugin works independently via --plugin-dir | PASS | E2E test copies to tmpdir, 29/29 pass |
+| SC3 | Multiple plugins work together without conflicts | PASS | 3 subsets tested, zero command collisions |
+| SC4 | At least 3 representative subsets tested | PASS | agentic+spec, agentic+git+review, all 6 |
+| SC5 | Command namespacing works correctly | PASS | 35 commands across 6 plugins, all namespaced |
+| SC6 | No plugin references files outside its own directory | PASS | grep AGENTIC_GLOBAL=0, _AGENTIC_ROOT=0, core/lib/=0 |
+| SC7 | All plugins work from cache | PASS | Each copied to tmpdir, validated independently |
+| SC8 | All paths use ${CLAUDE_PLUGIN_ROOT} | PASS | 476 CLAUDE_PLUGIN_ROOT refs across plugins |
+| SC9 | Zero dependency on ~/.agents/agentic-config/ | PASS | Zero grep matches (customization/ exempted) |
+| SC10 | spec-resolver.sh inlined into agentic-spec | PASS | 7 CLAUDE_PLUGIN_ROOT refs, 0 AGENTIC_GLOBAL |
+| SC11 | All 8 spec stage agents use plugin path | PASS | All 8 confirmed: CREATE through DOCUMENT |
+| SC12 | core/tools/agentic/ bundled into agentic-mux | PASS | 25 files in scripts/tools/ |
+| SC13 | core/prompts/ bundled into plugins | PASS | 10 prompt files in scripts/prompts/ |
+| SC14 | hooks.json split per plugin | PASS | agentic=2 hooks, agentic-tools=1 hook |
+| SC15 | MUX dynamic hooks bundled in agentic-mux | PASS | 3 hook scripts in scripts/hooks/ |
+| SC16 | Each plugin has valid plugin.json with unique name | PASS | 6 unique names verified |
+| SC17 | setup-config.sh and update-config.sh updated | PASS | Both in plugins/agentic/scripts/, 0 AGENTIC_GLOBAL |
+| SC18 | video_query.py bundled with agentic-tools | PASS | scripts/video_query.py exists |
+| SC19 | external-specs.sh migrated to plugin-aware paths | PASS | 0 _AGENTIC_ROOT, 4 CLAUDE_PLUGIN_ROOT |
+| SC20 | All 6 plugins have correct file counts | PASS | agentic=52, spec=21, mux=152, git=13, review=8, tools=57 |
+| SC-NEW-1 | File distribution matches spec table | PASS | Exact command/skill counts verified per plugin |
+| SC-NEW-2 | Zero refs to core/lib/, core/tools/, core/prompts/ | PASS | grep returns empty for all three patterns |
+
+### Overall Grade
+
+**Grade**: PASS
+
+**Justification**: All 22 SC items validated with concrete evidence. Zero CRITICAL, HIGH, or MEDIUM gaps. Three review cycles resolved all issues before final PASS. Unit tests 18/18, E2E tests 29/29, ruff 0 errors, pyright 0 errors. Each plugin independently validated from simulated cache. 3 multi-plugin subsets confirmed zero collisions.
+
+**Confidence**: high
