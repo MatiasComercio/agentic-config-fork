@@ -56,3 +56,10 @@ trees/
 
 # Invalid nested symlinks (artifacts from misconfigured setups)
 core/agents/agents
+
+# Plugin-root directories (copies of core/ for plugin compatibility)
+# Canonical source remains core/; these are generated during plugin build
+/commands/
+/skills/
+# agents/ was previously a symlink to core/agents, now a real directory copy
+/agents/
