@@ -1915,3 +1915,12 @@ None. All tests passed on first run.
 ### Fix-Rerun Cycles
 
 0
+
+## Updated Doc
+
+- Files updated:
+  - `CHANGELOG.md`: Added plugin distribution entry under `[Unreleased]` -- lists all 6 plugins with command/skill counts, self-containment guarantees, `${CLAUDE_PLUGIN_ROOT}` usage, and test coverage
+  - `README.md`: Added "Plugin Distribution (Claude Code)" section with plugin table (name, contents, commands, skills counts) and self-containment notes
+- Changes made:
+  - CHANGELOG: New "Added" bullets for plugin distribution (6 plugins, spec-resolver, config-loader, 2 test files)
+  - README: New section between "Supported Project Types" and "Documentation" with plugin table and installation context
