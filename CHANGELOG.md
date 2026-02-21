@@ -29,6 +29,7 @@ All notable changes to agentic-config.
 
 ### Changed
 
+- All 6 plugin manifests enriched: `homepage` field added, `author.name` aligned to "Agentic Config Contributors" across all plugins
 - 5 skills migrated to self-contained plugin isolation (no AGENTS.md, AGENTIC_GLOBAL, or .agentic-config.json dependencies):
   - `hook-writer`: updated reference table to use skill-bundled hook locations
   - `mux-subagent`: bundled guard script in `hooks/`, removed `.agentic-config.json` traversal
