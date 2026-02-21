@@ -19,6 +19,11 @@ All notable changes to agentic-config.
   - `plugins/agentic-spec/scripts/lib/config-loader.sh`: plugin-aware version (no `agentic-root.sh` dependency)
   - `tests/plugins/test_plugin_structure.py`: 18 unit tests for plugin structure validation
   - `tests/plugins/test_plugin_isolation.sh`: 29 E2E isolation tests (simulates cache copy)
+- Plugin marketplace: `.claude-plugin/marketplace.json` listing all 6 plugins for Claude Code marketplace distribution
+  - Correct schema with `$schema`, `name` (`agentic-plugins`), `owner`, `plugins` array
+  - All 6 plugins with relative `./plugins/<name>` sources, descriptions, categories, tags
+  - No version duplication in marketplace entries (version lives in each `plugin.json`)
+  - `tests/b002-marketplace-validate.py`: 76-check programmatic validation script
 - Hook system migrated to plugin `hooks/hooks.json` format (Claude Code plugin format)
   - `hooks/hooks.json`: 3 PreToolUse hooks using `${CLAUDE_PLUGIN_ROOT}` for path resolution
   - `scripts/hooks/dry-run-guard.py`: refactored from `core/hooks/pretooluse/` -- removed `find_agentic_root()`, uses `Path.cwd()` for session path resolution
