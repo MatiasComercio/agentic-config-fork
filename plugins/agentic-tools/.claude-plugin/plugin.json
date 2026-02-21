@@ -3,8 +3,9 @@
   "description": "Productivity utilities - browser, gsuite, video query, ADR, milestones",
   "version": "1.0.0",
   "author": {
-    "name": "Agentic Config"
+    "name": "Agentic Config Contributors"
   },
+  "homepage": "https://github.com/agentic-config/agentic-config",
   "repository": "https://github.com/agentic-config/agentic-config",
   "license": "MIT",
   "keywords": ["tools", "browser", "gsuite", "video", "productivity"]

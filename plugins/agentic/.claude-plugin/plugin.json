@@ -3,8 +3,9 @@
   "description": "Core agentic workflow automation - setup, status, update, migrate, validate, customize",
   "version": "1.0.0",
   "author": {
-    "name": "Agentic Config"
+    "name": "Agentic Config Contributors"
   },
+  "homepage": "https://github.com/agentic-config/agentic-config",
   "repository": "https://github.com/agentic-config/agentic-config",
   "license": "MIT",
   "keywords": ["workflow", "setup", "infrastructure", "development"]
