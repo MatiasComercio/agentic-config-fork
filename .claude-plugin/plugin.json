@@ -3,8 +3,9 @@
   "description": "Agentic workflow automation for AI-assisted development (monorepo root)",
   "version": "1.0.0",
   "author": {
-    "name": "Agentic Config"
+    "name": "Agentic Config Contributors"
   },
+  "homepage": "https://github.com/agentic-config/agentic-config",
   "repository": "https://github.com/agentic-config/agentic-config",
   "license": "MIT",
   "keywords": ["workflow", "spec", "orchestration", "development"]

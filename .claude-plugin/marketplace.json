@@ -1,0 +1,56 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agentic-plugins",
+  "description": "Agentic workflow automation plugins for AI-assisted development",
+  "owner": {
+    "name": "Agentic Config Contributors"
+  },
+  "metadata": {
+    "description": "Agentic workflow automation plugins for AI-assisted development",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "agentic",
+      "source": "./plugins/agentic",
+      "description": "Core agentic workflow automation - setup, status, update, migrate, validate, customize",
+      "category": "workflow",
+      "tags": ["core", "setup", "management"]
+    },
+    {
+      "name": "agentic-spec",
+      "source": "./plugins/agentic-spec",
+      "description": "Specification workflow management - create, plan, implement, review, test specs",
+      "category": "workflow",
+      "tags": ["spec", "planning", "orchestration"]
+    },
+    {
+      "name": "agentic-mux",
+      "source": "./plugins/agentic-mux",
+      "description": "Multi-agent orchestration - MUX workflows, spawning, campaigns, coordination",
+      "category": "orchestration",
+      "tags": ["mux", "parallel", "multi-agent"]
+    },
+    {
+      "name": "agentic-git",
+      "source": "./plugins/agentic-git",
+      "description": "Git workflow automation - pull requests, squash, rebase, releases",
+      "category": "development",
+      "tags": ["git", "pr", "squash", "rebase"]
+    },
+    {
+      "name": "agentic-review",
+      "source": "./plugins/agentic-review",
+      "description": "Code review workflows - E2E review, PR review, full lifecycle review",
+      "category": "development",
+      "tags": ["review", "testing", "e2e"]
+    },
+    {
+      "name": "agentic-tools",
+      "source": "./plugins/agentic-tools",
+      "description": "Productivity utilities - browser, gsuite, video query, ADR, milestones",
+      "category": "productivity",
+      "tags": ["browser", "gsuite", "utilities"]
+    }
+  ]
+}
