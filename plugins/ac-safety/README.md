@@ -39,11 +39,13 @@ All hooks use **fail-close**: errors deny the operation.
 
 ## Configuration
 
-Three-tier config resolution (most-restrictive-wins for category decisions):
+Three-tier config resolution with deep-merge:
 
-1. Project-level: `./safety.yaml`
+1. Project-level: `./safety.yaml` (highest priority)
 2. User-level: `~/.claude/safety.yaml`
-3. Plugin defaults: `config/safety.default.yaml`
+3. Plugin defaults: `config/safety.default.yaml` (lowest priority)
+
+Category decisions use **most-restrictive-wins**: if project sets `ask` but user sets `deny`, the effective decision is `deny`. Lists (allowlists, prefixes) are replaced entirely by higher-priority tiers.
 
 ### Category decisions
 

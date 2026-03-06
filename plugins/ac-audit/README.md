@@ -29,7 +29,7 @@ Fail-close: errors deny the operation.
 
 ## Configuration
 
-Override at: project `audit.yaml` > `~/.claude/audit.yaml` > plugin defaults.
+Three-tier config resolution: project `audit.yaml` > `~/.claude/audit.yaml` > plugin defaults. Higher-priority tiers override lower ones.
 
 ```yaml
 # Example: audit.yaml
