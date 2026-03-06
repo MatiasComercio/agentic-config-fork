@@ -3,16 +3,14 @@
 
 import json
 import os
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 # Add hooks dir to path for direct import
 HOOKS_DIR = Path(__file__).parent.parent.parent / "scripts" / "hooks"
 sys.path.insert(0, str(HOOKS_DIR))
 
-from _lib import (
+from _lib import (  # noqa: E402
     _deep_merge,
     _most_restrictive,
     allow,
