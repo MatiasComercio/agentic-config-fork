@@ -10,7 +10,7 @@ from pathlib import Path
 HOOKS_DIR = Path(__file__).parent.parent.parent / "scripts" / "hooks"
 sys.path.insert(0, str(HOOKS_DIR))
 
-from _lib import (  # noqa: E402
+from _lib import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     _deep_merge,
     _most_restrictive,
     allow,
