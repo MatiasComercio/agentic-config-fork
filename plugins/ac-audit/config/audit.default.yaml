@@ -1,0 +1,10 @@
+# ac-audit default configuration
+# Override at: project audit.yaml > ~/.claude/audit.yaml > this file
+
+log_dir: "/var/log/claude-audit"
+log_permissions: 384  # 0o600 in decimal
+max_words: 50
+
+# Tools that display systemMessage in Claude Code UI
+display_tools:
+  - "Bash"
