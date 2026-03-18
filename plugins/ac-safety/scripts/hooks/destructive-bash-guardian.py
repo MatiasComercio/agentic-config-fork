@@ -18,15 +18,19 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _lib import allow, ask, deny, fail_close, get_category_decision, load_config
 
+# Optional path prefix for system binaries (covers /bin/rm, /usr/bin/rm,
+# /usr/local/bin/rm, /usr/local/sbin/rm, etc.)
+_BIN = r"(?:(?:/usr(?:/local)?)?/s?bin/)?"
+
 # Map: (compiled_pattern, reason, category)
 # Category names match safety.yaml destructive_bash.categories keys
 PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
     # -- file-destruction --
-    (re.compile(r"\brm\s+(-[^\s]*)*\s*-[rR].*(" + re.escape(os.path.expanduser("~")) + r"[/\s]|~/|/Users/\w+/(?!projects/))"), "rm -r targeting home or outside project", "file-destruction"),
-    (re.compile(r"\brm\s+(-[^\s]*\s+)*-rf\s+/(?!Users/\w+/projects/)"), "rm -rf targeting system or non-project path", "file-destruction"),
-    (re.compile(r"\brm\s+(-[^\s]*\s+)*-rf\s+~/(?!projects/)"), "rm -rf targeting home subdirectory outside project", "file-destruction"),
-    (re.compile(r"\brm\s+(-[^\s]*\s+)*-rf\s+~\s"), "rm -rf targeting entire home directory", "file-destruction"),
-    (re.compile(r"\brm\s+(-[^\s]*\s+)*-rf\s+\.\.\s"), "rm -rf targeting parent directory", "file-destruction"),
+    (re.compile(_BIN + r"\brm\s+(-[^\s]*)*\s*-[rR].*(" + re.escape(os.path.expanduser("~")) + r"[/\s]|~/|/Users/\w+/(?!projects/))"), "rm -r targeting home or outside project", "file-destruction"),
+    (re.compile(_BIN + r"\brm\s+(-[^\s]*\s+)*-rf\s+/(?!Users/\w+/projects/)"), "rm -rf targeting system or non-project path", "file-destruction"),
+    (re.compile(_BIN + r"\brm\s+(-[^\s]*\s+)*-rf\s+~/(?!projects/)"), "rm -rf targeting home subdirectory outside project", "file-destruction"),
+    (re.compile(_BIN + r"\brm\s+(-[^\s]*\s+)*-rf\s+~\s"), "rm -rf targeting entire home directory", "file-destruction"),
+    (re.compile(_BIN + r"\brm\s+(-[^\s]*\s+)*-rf\s+\.\.\s"), "rm -rf targeting parent directory", "file-destruction"),
     # -- aws-destructive --
     (re.compile(r"\baws\s+s3\s+rb\b"), "aws s3 rb (bucket removal)", "aws-destructive"),
     (re.compile(r"\baws\s+s3\s+rm\s+.*--recursive\b"), "aws s3 rm --recursive", "aws-destructive"),
@@ -72,13 +76,13 @@ PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"\bnslookup\s+.*\$\("), "DNS exfiltration attempt", "data-exfiltration"),
     (re.compile(r"\bdig\s+.*\$\("), "DNS exfiltration attempt", "data-exfiltration"),
     # -- process-destruction --
-    (re.compile(r"\bkill\s+-9\s+-1\b"), "kill all user processes", "process-destruction"),
-    (re.compile(r"\bkillall\s+-9\b"), "killall -9", "process-destruction"),
-    (re.compile(r"\bpkill\s+-9\b"), "pkill -9", "process-destruction"),
-    (re.compile(r"\bpkill\s+-u\s"), "pkill by user (mass kill)", "process-destruction"),
+    (re.compile(_BIN + r"\bkill\s+-9\s+-1\b"), "kill all user processes", "process-destruction"),
+    (re.compile(_BIN + r"\bkillall\s+-9\b"), "killall -9", "process-destruction"),
+    (re.compile(_BIN + r"\bpkill\s+-9\b"), "pkill -9", "process-destruction"),
+    (re.compile(_BIN + r"\bpkill\s+-u\s"), "pkill by user (mass kill)", "process-destruction"),
     # -- permission-abuse --
-    (re.compile(r"\bchmod\s+(-[^\s]+\s+)*777\b"), "chmod 777", "permission-abuse"),
-    (re.compile(r"\bchmod\s+-[Rr].*777"), "recursive chmod 777", "permission-abuse"),
+    (re.compile(_BIN + r"\bchmod\s+(-[^\s]+\s+)*777\b"), "chmod 777", "permission-abuse"),
+    (re.compile(_BIN + r"\bchmod\s+-[Rr].*777"), "recursive chmod 777", "permission-abuse"),
     # -- persistence --
     (re.compile(r"\bcrontab\b"), "crontab modification", "persistence"),
     (re.compile(r"LaunchAgents"), "LaunchAgent persistence", "persistence"),
@@ -88,11 +92,11 @@ PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"\bdd\s+.*of=/dev/"), "dd to device", "system-level"),
     (re.compile(r":\(\)\{.*\|.*&.*\};:"), "fork bomb", "system-level"),
     # -- iac-destruction --
-    (re.compile(r"\bterraform\s+destroy\b"), "terraform destroy", "iac-destruction"),
-    (re.compile(r"\bpulumi\s+destroy\b"), "pulumi destroy", "iac-destruction"),
+    (re.compile(_BIN + r"\bterraform\s+destroy\b"), "terraform destroy", "iac-destruction"),
+    (re.compile(_BIN + r"\bpulumi\s+destroy\b"), "pulumi destroy", "iac-destruction"),
     # -- docker-destruction --
-    (re.compile(r"\bdocker\s+system\s+prune\s+-a\b"), "docker system prune -a", "docker-destruction"),
-    (re.compile(r"\bdocker\s+volume\s+prune\b"), "docker volume prune", "docker-destruction"),
+    (re.compile(_BIN + r"\bdocker\s+system\s+prune\s+-a\b"), "docker system prune -a", "docker-destruction"),
+    (re.compile(_BIN + r"\bdocker\s+volume\s+prune\b"), "docker volume prune", "docker-destruction"),
     # -- npm-publish --
     (re.compile(r"\bnpm\s+publish\b"), "npm publish", "npm-publish"),
     (re.compile(r"\bnpm\s+unpublish\b"), "npm unpublish", "npm-publish"),

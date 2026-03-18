@@ -6,10 +6,12 @@ import os
 import sys
 from pathlib import Path
 
-# Add hooks dir to path for direct import
+# Add tests dir for conftest, hooks dir for _lib
+sys.path.insert(0, str(Path(__file__).parent.parent))
 HOOKS_DIR = Path(__file__).parent.parent.parent / "scripts" / "hooks"
 sys.path.insert(0, str(HOOKS_DIR))
 
+from conftest import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
 from _lib import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     _deep_merge,
     _most_restrictive,
@@ -21,24 +23,6 @@ from _lib import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     is_in_prefixes,
     resolve_path,
 )
-
-
-class TestResult:
-    def __init__(self, name: str):
-        self.name = name
-        self.passed = False
-        self.error: str | None = None
-    def mark_pass(self) -> None:
-        self.passed = True
-    def mark_fail(self, error: str) -> None:
-        self.passed = False
-        self.error = error
-    def __str__(self) -> str:
-        status = "PASS" if self.passed else "FAIL"
-        msg = f"  {status}: {self.name}"
-        if self.error:
-            msg += f"\n    Error: {self.error}"
-        return msg
 
 
 def test_most_restrictive() -> TestResult:
@@ -90,12 +74,26 @@ def test_deep_merge_categories_most_restrictive() -> TestResult:
 
 
 def test_deep_merge_list_replacement() -> TestResult:
-    r = TestResult("deep_merge: lists are replaced not merged")
+    r = TestResult("deep_merge: non-security lists are replaced, security lists are union-merged")
     try:
+        # Non-security list: overlay replaces
         base = {"allowed": ["/a/", "/b/"]}
         overlay = {"allowed": ["/c/"]}
         result = _deep_merge(base, overlay)
         assert result["allowed"] == ["/c/"]
+
+        # Security list (ending in _prefixes): union-merged
+        base = {"blocked_prefixes": ["/a/", "/b/"]}
+        overlay = {"blocked_prefixes": ["/b/", "/c/"]}
+        result = _deep_merge(base, overlay)
+        assert set(result["blocked_prefixes"]) == {"/a/", "/b/", "/c/"}
+
+        # Security list (ending in _allowlist): union-merged
+        base = {"npx_allowlist": ["pkg-a", "pkg-b"]}
+        overlay = {"npx_allowlist": ["pkg-b", "pkg-c"]}
+        result = _deep_merge(base, overlay)
+        assert set(result["npx_allowlist"]) == {"pkg-a", "pkg-b", "pkg-c"}
+
         r.mark_pass()
     except Exception as e:
         r.mark_fail(str(e))
@@ -202,27 +200,14 @@ def test_decision_helpers_output() -> TestResult:
 
 
 def main() -> None:
-    print("Running _lib.py unit tests...\n")
-    tests = [
+    from conftest import run_tests  # pyright: ignore[reportMissingImports]
+    run_tests("_lib.py unit tests", [
         test_most_restrictive, test_deep_merge_basic,
         test_deep_merge_categories_most_restrictive,
         test_deep_merge_list_replacement, test_get_category_decision_defaults,
         test_resolve_path, test_is_in_prefixes,
         test_fail_close_decorator, test_decision_helpers_output,
-    ]
-    passed = failed = 0
-    for t in tests:
-        result = t()
-        print(result)
-        if result.passed:
-            passed += 1
-        else:
-            failed += 1
-    print(f"\n{'='*60}")
-    print(f"Results: {passed} passed, {failed} failed out of {len(tests)} total")
-    if failed:
-        sys.exit(1)
-    print("All tests passed!")
+    ])
 
 
 if __name__ == "__main__":

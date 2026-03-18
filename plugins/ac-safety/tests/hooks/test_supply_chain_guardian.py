@@ -3,27 +3,14 @@
 
 import json
 import subprocess
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from conftest import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 
 HOOK_PATH = Path(__file__).parent.parent.parent / "scripts" / "hooks" / "supply-chain-guardian.py"
-
-
-class TestResult:
-    def __init__(self, name: str):
-        self.name = name
-        self.passed = False
-        self.error: str | None = None
-    def mark_pass(self) -> None:
-        self.passed = True
-    def mark_fail(self, error: str) -> None:
-        self.error = error
-    def __str__(self) -> str:
-        status = "PASS" if self.passed else "FAIL"
-        msg = f"  {status}: {self.name}"
-        if self.error:
-            msg += f"\n    Error: {self.error}"
-        return msg
 
 
 def run_hook(command: str) -> dict:
@@ -83,19 +70,11 @@ def test_asks_npx_unknown_package() -> TestResult:
 
 
 def main() -> None:
-    print("Running supply-chain-guardian unit tests...\n")
-    tests = [test_allows_npm_install, test_allows_uv_sync,
-             test_asks_pip_install_direct, test_asks_npx_unknown_package]
-    passed = failed = 0
-    for t in tests:
-        result = t()
-        print(result)
-        passed += 1 if result.passed else 0
-        failed += 0 if result.passed else 1
-    print(f"\n{'='*60}\nResults: {passed} passed, {failed} failed out of {len(tests)} total")
-    if failed:
-        exit(1)
-    print("All tests passed!")
+    from conftest import run_tests  # pyright: ignore[reportMissingImports]
+    run_tests("supply-chain-guardian unit tests", [
+        test_allows_npm_install, test_allows_uv_sync,
+        test_asks_pip_install_direct, test_asks_npx_unknown_package,
+    ])
 
 
 if __name__ == "__main__":

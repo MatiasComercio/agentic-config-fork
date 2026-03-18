@@ -3,6 +3,11 @@ Shared library for ac-safety guardian hooks.
 
 Provides config loading (3-tier deep-merge), decision helpers,
 path utilities, and fail-close error handling.
+
+This module is imported by guardian scripts (credential-guardian.py, etc.)
+which declare ``dependencies = ["pyyaml"]`` in their PEP 723 headers.
+PyYAML is therefore available at runtime via ``uv run --script``.
+Do NOT run this file directly -- it is a library, not an entry point.
 """
 
 import json
@@ -13,6 +18,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 import yaml
+
+# Maximum config file size (1 MB). Files exceeding this are skipped.
+MAX_CONFIG_SIZE = 1_048_576
 
 # Decision priority for most-restrictive-wins resolution
 _DECISION_PRIORITY: dict[str, int] = {"deny": 0, "ask": 1, "allow": 2}
@@ -25,12 +33,19 @@ def _most_restrictive(a: str, b: str) -> str:
     return a if pa <= pb else b
 
 
+# Keys whose list values are security-critical and must be union-merged
+# (overlay adds to base, never replaces). Matched by suffix.
+_UNION_MERGE_SUFFIXES = ("_prefixes", "_allowlist", "_files", "_filenames", "_extensions")
+
+
 def _deep_merge(base: dict, overlay: dict) -> dict:
     """
     Deep-merge overlay into base. Returns new dict.
 
     For category decision dicts, applies most-restrictive-wins.
-    For lists, overlay replaces base entirely.
+    For security-critical lists (keys ending in _prefixes, _allowlist,
+    _files, _filenames, _extensions), merges by union (combine + deduplicate).
+    For other lists, overlay replaces base entirely.
     For dicts, recursively merge.
     """
     result = dict(base)
@@ -49,8 +64,22 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
                 result[key] = merged_cats
             else:
                 result[key] = _deep_merge(result[key], overlay_val)
+        elif isinstance(result[key], list) and isinstance(overlay_val, list):
+            # Security-critical lists: union-merge to prevent accidental loss of defaults
+            if any(key.endswith(suffix) for suffix in _UNION_MERGE_SUFFIXES):
+                seen: set[str] = set()
+                merged_list: list[Any] = []
+                for item in result[key] + overlay_val:
+                    item_key = str(item)
+                    if item_key not in seen:
+                        seen.add(item_key)
+                        merged_list.append(item)
+                result[key] = merged_list
+            else:
+                # Non-security lists: overlay replaces
+                result[key] = overlay_val
         else:
-            # Lists and scalars: overlay replaces
+            # Scalars: overlay replaces
             result[key] = overlay_val
     return result
 
@@ -64,7 +93,7 @@ def _find_plugin_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def load_config(guardian_name: str | None = None) -> dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """
     Load safety config with 3-tier deep-merge resolution.
 
@@ -73,35 +102,36 @@ def load_config(guardian_name: str | None = None) -> dict[str, Any]:
       2. User-level: ~/.claude/safety.yaml
       3. Plugin defaults: <plugin_root>/config/safety.default.yaml
 
-    Args:
-        guardian_name: If provided, return only that guardian's section merged
-                       with top-level keys (allowed_project_roots, etc.)
-
     Returns:
         Merged config dict.
     """
     plugin_root = _find_plugin_root()
 
+    def _safe_read_yaml(path: Path) -> dict[str, Any]:
+        """Read YAML file with size guard. Returns empty dict on skip/error."""
+        if not path.is_file():
+            return {}
+        if path.stat().st_size > MAX_CONFIG_SIZE:
+            print(f"Warning: config file {path} exceeds {MAX_CONFIG_SIZE} bytes, skipping", file=sys.stderr)
+            return {}
+        with open(path) as f:
+            return yaml.safe_load(f) or {}
+
     # Layer 1: Plugin defaults (base)
     defaults_path = plugin_root / "config" / "safety.default.yaml"
-    config: dict[str, Any] = {}
-    if defaults_path.is_file():
-        with open(defaults_path) as f:
-            config = yaml.safe_load(f) or {}
+    config: dict[str, Any] = _safe_read_yaml(defaults_path)
 
     # Layer 2: User-level
     user_path = Path.home() / ".claude" / "safety.yaml"
-    if user_path.is_file():
-        with open(user_path) as f:
-            user_cfg = yaml.safe_load(f) or {}
+    user_cfg = _safe_read_yaml(user_path)
+    if user_cfg:
         config = _deep_merge(config, user_cfg)
 
     # Layer 3: Project-level
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
     project_path = Path(project_dir) / "safety.yaml"
-    if project_path.is_file():
-        with open(project_path) as f:
-            proj_cfg = yaml.safe_load(f) or {}
+    proj_cfg = _safe_read_yaml(project_path)
+    if proj_cfg:
         config = _deep_merge(config, proj_cfg)
 
     return config

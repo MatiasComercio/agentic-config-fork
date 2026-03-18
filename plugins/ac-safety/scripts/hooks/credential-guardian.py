@@ -17,7 +17,7 @@ import sys
 
 # Import shared library via sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _lib import allow, deny, fail_close, is_in_prefixes, load_config, resolve_path
+from _lib import allow, ask, deny, fail_close, get_category_decision, is_in_prefixes, load_config, resolve_path
 
 READ_TOOLS = {"Read", "Grep", "Glob"}
 
@@ -46,6 +46,22 @@ def _extract_paths(tool_name: str, tool_input: dict) -> list[str]:
     return paths
 
 
+def _categorize_block(prefix: str) -> str:
+    """Map a blocked prefix to its credential category."""
+    p = prefix.rstrip("/").lower()
+    if ".ssh" in p:
+        return "ssh-keys"
+    if ".aws" in p or ".docker" in p or ".config/gh" in p:
+        return "cloud-credentials"
+    if ".gnupg" in p:
+        return "cloud-credentials"
+    if "library" in p:
+        return "browser-credentials"
+    if ".claude" in p:
+        return "app-tokens"
+    return "cloud-credentials"
+
+
 def _is_blocked(
     path: str,
     blocked_prefixes: list[str],
@@ -53,34 +69,35 @@ def _is_blocked(
     blocked_extensions: list[str],
     allowed_project_roots: list[str],
     allowed_claude_files: list[str],
-) -> str | None:
-    """Returns block reason or None if allowed."""
+) -> tuple[str | None, str]:
+    """Returns (block_reason, category) or (None, '') if allowed."""
     resolved = resolve_path(path)
 
-    # Always-blocked absolute prefixes
+    # Always-blocked absolute prefixes (use is_in_prefixes logic for consistency)
     for prefix in blocked_prefixes:
         real_prefix = os.path.realpath(os.path.expanduser(prefix.rstrip("/")))
-        if resolved.startswith(real_prefix) or resolved == real_prefix:
+        if resolved.startswith(real_prefix + "/") or resolved == real_prefix:
             # Exception for explicitly allowed claude files
             if any(resolved == os.path.realpath(os.path.expanduser(f)) for f in allowed_claude_files):
-                return None
-            return f"Access to {prefix} is blocked (credential protection)"
+                return None, ""
+            category = _categorize_block(prefix)
+            return f"Access to {prefix} is blocked (credential protection)", category
 
     # Blocked filenames in home dir
     basename = os.path.basename(resolved)
     home = os.path.expanduser("~")
-    if basename in blocked_filenames and resolved.startswith(home):
-        return f"Access to {basename} is blocked (credential file)"
+    if basename in blocked_filenames and resolved.startswith(home + "/"):
+        return f"Access to {basename} is blocked (credential file)", "app-tokens"
 
     # Outside project roots: block sensitive extensions and .env
     if not is_in_prefixes(path, allowed_project_roots + ["/private/tmp/", "/tmp/"]):
         _, ext = os.path.splitext(resolved)
         if ext.lower() in blocked_extensions:
-            return f"Access to {ext} files outside project dirs is blocked"
+            return f"Access to {ext} files outside project dirs is blocked", "ssh-keys"
         if re.search(r"(^|/)\.env(\..+)?$", os.path.basename(resolved)):
-            return "Access to .env files outside project dirs is blocked"
+            return "Access to .env files outside project dirs is blocked", "env-files"
 
-    return None
+    return None, ""
 
 
 @fail_close
@@ -113,9 +130,16 @@ def main() -> None:
 
     paths = _extract_paths(tool_name, tool_input)
     for path in paths:
-        reason = _is_blocked(path, blocked_prefixes, blocked_filenames, blocked_extensions, allowed_project_roots, allowed_claude_files)
+        reason, category = _is_blocked(path, blocked_prefixes, blocked_filenames, blocked_extensions, allowed_project_roots, allowed_claude_files)
         if reason:
-            deny(f"BLOCKED: {reason}")
+            # Default to deny if category not found (fail-close)
+            decision = get_category_decision(config, "credential_guardian", category) if category else "deny"
+            if decision == "deny":
+                deny(f"BLOCKED: {reason}")
+            elif decision == "ask":
+                ask(f"{reason} -- confirm to proceed?")
+            else:
+                allow()
             return
 
     allow()

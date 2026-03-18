@@ -6,6 +6,12 @@ allowed_project_roots:
   - "~/projects/"
 
 credential_guardian:
+  categories:
+    ssh-keys: deny
+    cloud-credentials: deny
+    env-files: deny
+    app-tokens: deny
+    browser-credentials: deny
   blocked_prefixes:
     - "~/.aws/"
     - "~/.ssh/"
@@ -64,6 +70,11 @@ write_scope:
     - "/usr/"
     - "/bin/"
     - "/sbin/"
+    # Belt-and-suspenders: settings files also in blocked_write_files,
+    # but listed here so removing them from blocked_write_files alone
+    # does not silently make them writable.
+    - "~/.claude/settings.json"
+    - "~/.claude/settings.local.json"
   blocked_write_files:
     - "~/.claude/settings.json"
     - "~/.claude/settings.local.json"
@@ -126,6 +137,7 @@ playwright:
   always_blocked_tools:
     - "browser_evaluate"
     - "browser_fill_form"
+    - "browser_run_code"
   always_allowed_tools:
     - "browser_snapshot"
     - "browser_take_screenshot"
@@ -144,4 +156,3 @@ playwright:
     - "browser_select_option"
     - "browser_drag"
     - "browser_type"
-    - "browser_run_code"

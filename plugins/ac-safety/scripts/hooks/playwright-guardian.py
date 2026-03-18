@@ -27,7 +27,7 @@ DEFAULT_ALLOWED_DOMAINS = {
     "serper.dev", "serpapi.com",
 }
 
-DEFAULT_ALWAYS_BLOCKED = {"browser_evaluate", "browser_fill_form"}
+DEFAULT_ALWAYS_BLOCKED = {"browser_evaluate", "browser_fill_form", "browser_run_code"}
 
 DEFAULT_ALWAYS_ALLOWED = {
     "browser_snapshot", "browser_take_screenshot", "browser_click",
@@ -35,7 +35,7 @@ DEFAULT_ALWAYS_ALLOWED = {
     "browser_console_messages", "browser_network_requests",
     "browser_press_key", "browser_hover", "browser_wait_for",
     "browser_navigate_back", "browser_install", "browser_handle_dialog",
-    "browser_select_option", "browser_drag", "browser_type", "browser_run_code",
+    "browser_select_option", "browser_drag", "browser_type",
 }
 
 

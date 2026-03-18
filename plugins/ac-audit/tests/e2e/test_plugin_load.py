@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2E tests: validate ac-safety plugin structure and loadability."""
+"""E2E tests: validate ac-audit plugin structure and loadability."""
 
 import ast
 import json
@@ -28,27 +28,20 @@ class TestResult:
         return msg
 
 
-def test_ac_safety_structure() -> TestResult:
-    r = TestResult("ac-safety: all required files exist")
+def test_ac_audit_structure() -> TestResult:
+    r = TestResult("ac-audit: all required files exist")
     try:
-        base = REPO_ROOT / "ac-safety"
+        base = REPO_ROOT / "ac-audit"
         required = [
-            ".claude-plugin/plugin.json", "hooks/hooks.json", "config/safety.default.yaml",
-            "scripts/hooks/_lib.py", "scripts/hooks/credential-guardian.py",
-            "scripts/hooks/destructive-bash-guardian.py", "scripts/hooks/write-scope-guardian.py",
-            "scripts/hooks/supply-chain-guardian.py", "scripts/hooks/playwright-guardian.py",
-            "skills/configure-safety/SKILL.md", "CLAUDE.md", "README.md",
+            ".claude-plugin/plugin.json", "hooks/hooks.json", "config/audit.default.yaml",
+            "scripts/hooks/tool-audit.py", "CLAUDE.md", "README.md",
         ]
         for f in required:
             assert (base / f).exists(), f"Missing: {f}"
-        # Validate JSON files
         json.loads((base / ".claude-plugin/plugin.json").read_text())
         json.loads((base / "hooks/hooks.json").read_text())
-        # Validate YAML
-        yaml.safe_load((base / "config/safety.default.yaml").read_text())
-        # Validate Python syntax
-        for py in base.glob("scripts/hooks/*.py"):
-            ast.parse(py.read_text())
+        yaml.safe_load((base / "config/audit.default.yaml").read_text())
+        ast.parse((base / "scripts/hooks/tool-audit.py").read_text())
         r.mark_pass()
     except Exception as e:
         r.mark_fail(str(e))
@@ -56,8 +49,8 @@ def test_ac_safety_structure() -> TestResult:
 
 
 def main() -> None:
-    print("Running ac-safety E2E plugin structure tests...\n")
-    tests = [test_ac_safety_structure]
+    print("Running ac-audit E2E plugin structure tests...\n")
+    tests = [test_ac_audit_structure]
     passed = failed = 0
     for t in tests:
         result = t()

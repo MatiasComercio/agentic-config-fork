@@ -41,13 +41,28 @@ def _apply_decision(config: dict, category: str, reason: str) -> None:
         allow()
 
 
+def _strip_version(package: str) -> str:
+    """Strip version suffix from a package name.
+
+    Scoped packages (e.g., @scope/pkg@1.0) have a leading '@', so
+    only strip version when there is more than one '@'.
+    Unscoped packages (e.g., pkg@1.0) always strip the trailing @version.
+    """
+    if package.startswith("@"):
+        # Scoped: @scope/pkg or @scope/pkg@version
+        if package.count("@") > 1:
+            return re.sub(r"@[\w./-]+$", "", package)
+        return package
+    # Unscoped: pkg or pkg@version
+    return re.sub(r"@[\w./-]+$", "", package)
+
+
 def _is_npx_blocked(command: str, npx_allowlist: set[str]) -> str | None:
     match = re.search(r"\bnpx\s+(?:--yes\s+)?(@?[\w/-]+(?:@[\w./-]+)?)", command)
     if not match:
         return None
     package = match.group(1)
-    base_package = re.sub(r"@[\w./-]+$", "", package) if not package.startswith("@") else \
-                   re.sub(r"@[\w./-]+$", "", package) if package.count("@") > 1 else package
+    base_package = _strip_version(package)
     if base_package in npx_allowlist:
         return None
     return f"npx with unapproved package '{package}' (not in allowlist)"

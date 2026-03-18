@@ -29,6 +29,19 @@ def _find_plugin_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Deep-merge overlay into base. Consistent with ac-safety _lib._deep_merge."""
+    result = dict(base)
+    for key, overlay_val in overlay.items():
+        if key not in result:
+            result[key] = overlay_val
+        elif isinstance(result[key], dict) and isinstance(overlay_val, dict):
+            result[key] = _deep_merge(result[key], overlay_val)
+        else:
+            result[key] = overlay_val
+    return result
+
+
 def _load_audit_config() -> dict:
     plugin_root = _find_plugin_root()
     defaults_path = plugin_root / "config" / "audit.default.yaml"
@@ -37,20 +50,20 @@ def _load_audit_config() -> dict:
         with open(defaults_path) as f:
             config = yaml.safe_load(f) or {}
 
-    # User override
+    # User override (deep-merge)
     user_path = Path.home() / ".claude" / "audit.yaml"
     if user_path.is_file():
         with open(user_path) as f:
             user_cfg = yaml.safe_load(f) or {}
-        config.update(user_cfg)
+        config = _deep_merge(config, user_cfg)
 
-    # Project override
+    # Project override (deep-merge)
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
     project_path = Path(project_dir) / "audit.yaml"
     if project_path.is_file():
         with open(project_path) as f:
             proj_cfg = yaml.safe_load(f) or {}
-        config.update(proj_cfg)
+        config = _deep_merge(config, proj_cfg)
 
     return config
 
@@ -87,9 +100,14 @@ def _format_simple(data: dict, indent: int = 0) -> str:
 
 
 def _write_audit_log(tool_name: str, tool_input: dict, log_dir: str, log_permissions: int) -> None:
-    log_path = Path(log_dir)
-    if not log_path.exists():
-        return  # Silently skip if dir missing
+    log_path = Path(os.path.expanduser(log_dir))
+    # Auto-create log directory if missing
+    try:
+        log_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        # Warn but don't block -- audit is observability, not enforcement
+        print(f"Warning: cannot create audit log dir {log_path}: {e}", file=sys.stderr)
+        return
     today = datetime.now().strftime("%Y-%m-%d")
     log_file = log_path / f"{today}.jsonl"
     entry = {"ts": datetime.now().isoformat(), "tool": tool_name, "input": tool_input, "session": SESSION_ID}
@@ -113,7 +131,7 @@ def main() -> None:
         tool_input = data.get("tool_input", {})
 
         config = _load_audit_config()
-        log_dir = config.get("log_dir", "/var/log/claude-audit")
+        log_dir = config.get("log_dir", "~/.claude/audit-logs")
         log_permissions = config.get("log_permissions", 0o600)
         display_tools = set(config.get("display_tools", ["Bash"]))
         max_words = config.get("max_words", 50)
