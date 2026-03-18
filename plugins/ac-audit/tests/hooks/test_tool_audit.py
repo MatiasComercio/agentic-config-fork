@@ -8,25 +8,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from conftest import TestResult, run_tests  # noqa: E402  # pyright: ignore[reportMissingImports]
+
 
 HOOK_PATH = Path(__file__).parent.parent.parent / "scripts" / "hooks" / "tool-audit.py"
-
-
-class TestResult:
-    def __init__(self, name: str):
-        self.name = name
-        self.passed = False
-        self.error: str | None = None
-    def mark_pass(self) -> None:
-        self.passed = True
-    def mark_fail(self, error: str) -> None:
-        self.error = error
-    def __str__(self) -> str:
-        status = "PASS" if self.passed else "FAIL"
-        msg = f"  {status}: {self.name}"
-        if self.error:
-            msg += f"\n    Error: {self.error}"
-        return msg
 
 
 def run_hook(tool_name: str, tool_input: dict, env_override: dict | None = None) -> dict:
@@ -166,27 +152,13 @@ def test_config_override_precedence() -> TestResult:
 
 
 def main() -> None:
-    print("Running tool-audit unit tests...\n")
-    tests = [
+    run_tests("tool-audit unit tests", [
         test_jsonl_log_writing,
         test_truncation_behavior,
         test_fail_close_on_error,
         test_missing_log_directory_autocreates,
         test_config_override_precedence,
-    ]
-    passed = failed = 0
-    for t in tests:
-        result = t()
-        print(result)
-        if result.passed:
-            passed += 1
-        else:
-            failed += 1
-    print(f"\n{'='*60}")
-    print(f"Results: {passed} passed, {failed} failed out of {len(tests)} total")
-    if failed:
-        sys.exit(1)
-    print("All tests passed!")
+    ])
 
 
 if __name__ == "__main__":

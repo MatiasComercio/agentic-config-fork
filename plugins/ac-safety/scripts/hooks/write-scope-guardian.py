@@ -47,13 +47,13 @@ def _check_write(
     # Ask user for sensitive directories
     for prefix in ask_user_prefixes:
         real_prefix = os.path.realpath(os.path.expanduser(prefix.rstrip("/")))
-        if resolved.startswith(real_prefix):
+        if resolved.startswith(real_prefix + "/") or resolved == real_prefix:
             return "ask", f"Write to {path} targets sensitive directory -- confirm?"
 
     # Block specific prefixes
     for prefix in blocked_write_prefixes:
         real_prefix = os.path.realpath(os.path.expanduser(prefix.rstrip("/")))
-        if resolved.startswith(real_prefix):
+        if resolved.startswith(real_prefix + "/") or resolved == real_prefix:
             return "deny", f"Write to {prefix} is blocked (protected directory)"
 
     # Block .git/hooks/ injection

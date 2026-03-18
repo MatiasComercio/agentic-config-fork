@@ -42,27 +42,36 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
     return result
 
 
+MAX_CONFIG_SIZE = 1_048_576  # 1 MB
+
+
+def _safe_read_yaml(path: Path) -> dict:
+    """Read YAML file with size guard. Returns empty dict on skip/error."""
+    if not path.is_file():
+        return {}
+    if path.stat().st_size > MAX_CONFIG_SIZE:
+        print(f"Warning: config file {path} exceeds {MAX_CONFIG_SIZE} bytes, skipping", file=sys.stderr)
+        return {}
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+
 def _load_audit_config() -> dict:
     plugin_root = _find_plugin_root()
     defaults_path = plugin_root / "config" / "audit.default.yaml"
-    config: dict = {}
-    if defaults_path.is_file():
-        with open(defaults_path) as f:
-            config = yaml.safe_load(f) or {}
+    config: dict = _safe_read_yaml(defaults_path)
 
     # User override (deep-merge)
     user_path = Path.home() / ".claude" / "audit.yaml"
-    if user_path.is_file():
-        with open(user_path) as f:
-            user_cfg = yaml.safe_load(f) or {}
+    user_cfg = _safe_read_yaml(user_path)
+    if user_cfg:
         config = _deep_merge(config, user_cfg)
 
     # Project override (deep-merge)
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
     project_path = Path(project_dir) / "audit.yaml"
-    if project_path.is_file():
-        with open(project_path) as f:
-            proj_cfg = yaml.safe_load(f) or {}
+    proj_cfg = _safe_read_yaml(project_path)
+    if proj_cfg:
         config = _deep_merge(config, proj_cfg)
 
     return config

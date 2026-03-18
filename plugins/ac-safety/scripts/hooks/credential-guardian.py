@@ -41,7 +41,7 @@ def _extract_paths(tool_name: str, tool_input: dict) -> list[str]:
         if p:
             paths.append(p)
         pat = tool_input.get("pattern", "")
-        if pat and pat.startswith("/"):
+        if pat and (pat.startswith("/") or pat.startswith("~/")):
             paths.append(pat)
     return paths
 

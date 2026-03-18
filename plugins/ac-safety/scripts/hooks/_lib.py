@@ -35,7 +35,7 @@ def _most_restrictive(a: str, b: str) -> str:
 
 # Keys whose list values are security-critical and must be union-merged
 # (overlay adds to base, never replaces). Matched by suffix.
-_UNION_MERGE_SUFFIXES = ("_prefixes", "_allowlist", "_files", "_filenames", "_extensions")
+_UNION_MERGE_SUFFIXES = ("_prefixes", "_allowlist", "_files", "_filenames", "_extensions", "_tools")
 
 
 def _deep_merge(base: dict, overlay: dict) -> dict:

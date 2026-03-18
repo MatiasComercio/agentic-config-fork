@@ -45,7 +45,7 @@ Three-tier config resolution with deep-merge:
 2. User-level: `~/.claude/safety.yaml`
 3. Plugin defaults: `config/safety.default.yaml` (lowest priority)
 
-Category decisions use **most-restrictive-wins**: if project sets `ask` but user sets `deny`, the effective decision is `deny`. Lists (allowlists, prefixes) are replaced entirely by higher-priority tiers.
+Category decisions use **most-restrictive-wins**: if project sets `ask` but user sets `deny`, the effective decision is `deny`. Security-critical lists (keys ending in `_prefixes`, `_allowlist`, `_files`, `_filenames`, `_extensions`, `_tools`) are **union-merged** -- higher-priority tiers add entries but cannot remove defaults. Other lists are replaced entirely by higher-priority tiers.
 
 ### Category decisions
 
