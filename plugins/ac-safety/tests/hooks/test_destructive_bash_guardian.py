@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from conftest import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
+from ac_safety_test_support import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 
 HOOK_PATH = Path(__file__).parent.parent.parent / "scripts" / "hooks" / "destructive-bash-guardian.py"
@@ -87,7 +87,7 @@ def test_allows_non_bash_tools() -> TestResult:
 
 
 def main() -> None:
-    from conftest import run_tests  # pyright: ignore[reportMissingImports]
+    from ac_safety_test_support import run_tests  # pyright: ignore[reportMissingImports]
     run_tests("destructive-bash-guardian unit tests", [
         test_blocks_rm_rf_home, test_blocks_git_force_push,
         test_blocks_terraform_destroy, test_allows_safe_commands,

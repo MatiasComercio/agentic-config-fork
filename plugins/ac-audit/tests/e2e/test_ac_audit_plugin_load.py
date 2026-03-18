@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from conftest import TestResult, run_tests  # noqa: E402  # pyright: ignore[reportMissingImports]
+from ac_audit_test_support import TestResult, run_tests  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 REPO_ROOT = Path(__file__).parent.parent.parent.parent
 

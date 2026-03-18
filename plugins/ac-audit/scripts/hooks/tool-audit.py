@@ -110,30 +110,24 @@ def _format_simple(data: dict, indent: int = 0) -> str:
 
 def _write_audit_log(tool_name: str, tool_input: dict, log_dir: str, log_permissions: int) -> None:
     log_path = Path(os.path.expanduser(log_dir))
-    # Auto-create log directory if missing
-    try:
-        log_path.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        # Warn but don't block -- audit is observability, not enforcement
-        print(f"Warning: cannot create audit log dir {log_path}: {e}", file=sys.stderr)
-        return
+    log_path.mkdir(parents=True, exist_ok=True)
+    if not log_path.is_dir():
+        raise NotADirectoryError(f"Audit log path is not a directory: {log_path}")
+
     today = datetime.now().strftime("%Y-%m-%d")
     log_file = log_path / f"{today}.jsonl"
     entry = {"ts": datetime.now().isoformat(), "tool": tool_name, "input": tool_input, "session": SESSION_ID}
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
-    try:
-        log_file.chmod(log_permissions)
-    except OSError:
-        pass
+
+    log_file.chmod(log_permissions)
 
 
 def main() -> None:
     try:
         json_input = sys.stdin.read().strip()
         if not json_input:
-            print(json.dumps({"systemMessage": "[AUDIT] No input received"}))
-            return
+            raise ValueError("No input received from Claude Code")
 
         data = json.loads(json_input)
         tool_name = data.get("tool_name", "Unknown")

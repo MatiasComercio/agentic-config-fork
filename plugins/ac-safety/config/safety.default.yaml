@@ -101,6 +101,8 @@ supply_chain:
     pip-direct: ask
     uv-add: ask
     uv-pip-direct: ask
+    npm-install: ask
+    yarn-add: ask
   npx_allowlist:
     - "@playwright/mcp"
     - "ts-node"
@@ -112,6 +114,8 @@ supply_chain:
     - "prettier"
     - "eslint"
   uv_add_allowlist: []
+  npm_install_allowlist: []
+  yarn_add_allowlist: []
 
 playwright:
   categories:

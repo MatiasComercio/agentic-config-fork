@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from conftest import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
+from ac_safety_test_support import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 
 HOOK_PATH = Path(__file__).parent.parent.parent / "scripts" / "hooks" / "credential-guardian.py"
@@ -80,6 +80,28 @@ def test_allows_non_read_tools() -> TestResult:
     return r
 
 
+def test_blocks_relative_glob_from_home() -> TestResult:
+    r = TestResult("Blocks Glob(path=~, pattern=.ssh/*)")
+    try:
+        out = run_hook("Glob", {"path": os.path.expanduser("~"), "pattern": ".ssh/*"})
+        assert out["decision"] == "deny", f"Expected deny, got {out['decision']}"
+        r.mark_pass()
+    except Exception as e:
+        r.mark_fail(str(e))
+    return r
+
+
+def test_blocks_relative_grep_glob_from_home() -> TestResult:
+    r = TestResult("Blocks Grep(path=~, glob=.aws/*)")
+    try:
+        out = run_hook("Grep", {"path": os.path.expanduser("~"), "glob": ".aws/*", "pattern": "secret"})
+        assert out["decision"] == "deny", f"Expected deny, got {out['decision']}"
+        r.mark_pass()
+    except Exception as e:
+        r.mark_fail(str(e))
+    return r
+
+
 def test_fail_close_on_bad_input() -> TestResult:
     r = TestResult("Fail-close on invalid JSON input")
     try:
@@ -97,10 +119,16 @@ def test_fail_close_on_bad_input() -> TestResult:
 
 
 def main() -> None:
-    from conftest import run_tests  # pyright: ignore[reportMissingImports]
+    from ac_safety_test_support import run_tests  # pyright: ignore[reportMissingImports]
     run_tests("credential-guardian unit tests", [
-        test_blocks_ssh_read, test_blocks_aws_grep, test_allows_project_read,
-        test_allows_claude_settings, test_allows_non_read_tools, test_fail_close_on_bad_input,
+        test_blocks_ssh_read,
+        test_blocks_aws_grep,
+        test_allows_project_read,
+        test_allows_claude_settings,
+        test_allows_non_read_tools,
+        test_blocks_relative_glob_from_home,
+        test_blocks_relative_grep_glob_from_home,
+        test_fail_close_on_bad_input,
     ])
 
 

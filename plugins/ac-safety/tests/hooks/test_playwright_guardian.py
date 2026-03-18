@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from conftest import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
+from ac_safety_test_support import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 
 HOOK_PATH = Path(__file__).parent.parent.parent / "scripts" / "hooks" / "playwright-guardian.py"
@@ -69,7 +69,7 @@ def test_asks_navigate_blocked_domain() -> TestResult:
 
 
 def main() -> None:
-    from conftest import run_tests  # pyright: ignore[reportMissingImports]
+    from ac_safety_test_support import run_tests  # pyright: ignore[reportMissingImports]
     run_tests("playwright-guardian unit tests", [
         test_blocks_browser_evaluate, test_allows_browser_snapshot,
         test_allows_navigate_allowed_domain, test_asks_navigate_blocked_domain,

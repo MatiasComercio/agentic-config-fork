@@ -22,28 +22,43 @@ from _lib import allow, ask, deny, fail_close, get_category_decision, is_in_pref
 READ_TOOLS = {"Read", "Grep", "Glob"}
 
 
+def _candidate_path(base_path: str, candidate: str) -> str | None:
+    """Build a path candidate from a base path and possibly relative pattern."""
+    if not candidate:
+        return None
+    if candidate.startswith(("/", "~/")):
+        return candidate
+    if not base_path:
+        return candidate
+    return os.path.join(base_path, candidate)
+
+
 def _extract_paths(tool_name: str, tool_input: dict) -> list[str]:
-    """Extract file paths from tool input based on tool type."""
-    paths: list[str] = []
+    """Extract file-system path candidates from tool input."""
+    raw_paths: list[str] = []
     if tool_name == "Read":
-        p = tool_input.get("file_path", "")
-        if p:
-            paths.append(p)
+        file_path = tool_input.get("file_path", "")
+        if file_path:
+            raw_paths.append(file_path)
     elif tool_name == "Grep":
-        p = tool_input.get("path", "")
-        if p:
-            paths.append(p)
-        g = tool_input.get("glob", "")
-        if g and "/" in g:
-            paths.append(g)
+        base_path = tool_input.get("path", "")
+        if base_path:
+            raw_paths.append(base_path)
+        glob_pattern = tool_input.get("glob", "")
+        candidate_path = _candidate_path(base_path, glob_pattern)
+        if candidate_path:
+            raw_paths.append(candidate_path)
     elif tool_name == "Glob":
-        p = tool_input.get("path", "")
-        if p:
-            paths.append(p)
-        pat = tool_input.get("pattern", "")
-        if pat and (pat.startswith("/") or pat.startswith("~/")):
-            paths.append(pat)
-    return paths
+        base_path = tool_input.get("path", "")
+        if base_path:
+            raw_paths.append(base_path)
+        pattern = tool_input.get("pattern", "")
+        candidate_path = _candidate_path(base_path, pattern)
+        if candidate_path:
+            raw_paths.append(candidate_path)
+
+    # Preserve order while removing duplicates.
+    return list(dict.fromkeys(raw_paths))
 
 
 def _categorize_block(prefix: str) -> str:

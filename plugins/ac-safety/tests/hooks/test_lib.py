@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 HOOKS_DIR = Path(__file__).parent.parent.parent / "scripts" / "hooks"
 sys.path.insert(0, str(HOOKS_DIR))
 
-from conftest import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
+from ac_safety_test_support import TestResult  # noqa: E402  # pyright: ignore[reportMissingImports]
 from _lib import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     _deep_merge,
     _most_restrictive,
@@ -200,7 +200,7 @@ def test_decision_helpers_output() -> TestResult:
 
 
 def main() -> None:
-    from conftest import run_tests  # pyright: ignore[reportMissingImports]
+    from ac_safety_test_support import run_tests  # pyright: ignore[reportMissingImports]
     run_tests("_lib.py unit tests", [
         test_most_restrictive, test_deep_merge_basic,
         test_deep_merge_categories_most_restrictive,
