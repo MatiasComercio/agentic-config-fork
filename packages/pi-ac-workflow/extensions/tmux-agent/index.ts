@@ -207,8 +207,19 @@ interface BridgeParentState {
 	updatedAt?: string;
 }
 
+interface BridgePendingTerminalSnapshot {
+	kind: "completion" | "failure";
+	assistantText: string;
+	summary: string;
+	markdown: string;
+	errorMessage?: string;
+	capturedAt: string;
+}
+
 interface BridgeChildState {
 	reportCount: number;
+	pendingTerminal?: BridgePendingTerminalSnapshot;
+	terminalEventId?: string;
 	updatedAt?: string;
 }
 
@@ -1070,10 +1081,13 @@ function buildChildProtocol(launch: BridgeLaunchFile): string {
 		"",
 		"Your job:",
 		"- Work normally on the assigned task.",
+		"- If you are still working, keep working; do not treat a stage milestone or intermediate turn as final completion.",
 		"- Keep your final answer concise and decision-oriented.",
-		"- Assume the extension will package your final answer into a bounded markdown report for the parent.",
+		"- The extension will package your LAST final answer into a bounded markdown report for the parent only after this child session stops.",
 		"",
-		"When you finish a turn, prefer this response shape:",
+		"Do not send the tmux-agent completion report early. Make the tmux-agent report in the CORRECT moment: when it completes the ENTIRE task.",
+		"",
+		"When you are ready to stop this child session after completing the ENTIRE task, prefer this final response shape:",
 		"## Summary",
 		"**Purpose**: one sentence",
 		"**Outcome**: one sentence",
@@ -1085,7 +1099,7 @@ function buildChildProtocol(launch: BridgeLaunchFile): string {
 		"- next step 1",
 		"- next step 2",
 		"",
-		"If you need the parent to decide something BEFORE completion, call the tmux_agent tool with:",
+		"If you need the parent to decide something BEFORE you stop, call the tmux_agent tool with:",
 		"- action: report_parent",
 		"- reportKind: question | blocker | progress | failure",
 		"- summary: short bounded summary",
@@ -1592,6 +1606,59 @@ async function writeBridgeLatestTerminalReport(bridgeDir: string, kind: "complet
 	const reportPath = path.join(bridgeDir, "child", `latest-${kind}.md`);
 	await writeTextFileAtomic(reportPath, `${markdown.trim()}\n`);
 	return reportPath;
+}
+
+async function persistPendingTerminalSnapshot(bridgeDir: string, snapshot: BridgePendingTerminalSnapshot): Promise<void> {
+	const state = await readBridgeChildState(bridgeDir);
+	state.pendingTerminal = snapshot;
+	await writeBridgeChildState(bridgeDir, state);
+}
+
+async function flushPendingTerminalReport(params: { bridgeDir: string; launch: BridgeLaunchFile; agentId: string }): Promise<{ bridgeEvent: BridgeEvent; reportPath: string; signalPath: string } | undefined> {
+	const state = await readBridgeChildState(params.bridgeDir);
+	if (state.terminalEventId) return undefined;
+
+	const fallbackError = "No final assistant turn captured before child session shutdown.";
+	const snapshot =
+		state.pendingTerminal ??
+		({
+			kind: "failure",
+			assistantText: "",
+			summary: truncate(fallbackError, 240),
+			markdown: buildAutoReportMarkdown({
+				launch: params.launch,
+				kind: "failure",
+				assistantText: "",
+				errorMessage: fallbackError,
+			}),
+			errorMessage: fallbackError,
+			capturedAt: nowIso(),
+		} satisfies BridgePendingTerminalSnapshot);
+
+	const reportPath = await writeBridgeLatestTerminalReport(params.bridgeDir, snapshot.kind, snapshot.markdown);
+	const bridgeEvent = await appendBridgeEvent(params.bridgeDir, {
+		launchId: params.launch.launchId,
+		direction: "child_to_parent",
+		type: snapshot.kind,
+		from: { agentId: params.agentId, sessionName: params.launch.sessionName },
+		summary: truncate(snapshot.summary || snapshot.errorMessage || `${snapshot.kind} reported by ${params.agentId}`, 240),
+		reportPath,
+	});
+	const signalPath = await writeBridgeEventSignal(params.bridgeDir, bridgeEvent, snapshot.kind === "completion");
+	state.pendingTerminal = undefined;
+	state.terminalEventId = bridgeEvent.eventId;
+	await writeBridgeChildState(params.bridgeDir, state);
+	await appendAuditLog({
+		timestamp: nowIso(),
+		event: "child_terminal_report",
+		launchId: params.launch.launchId,
+		bridgeDir: params.bridgeDir,
+		agentId: params.agentId,
+		kind: snapshot.kind,
+		reportPath,
+		signalPath,
+	});
+	return { bridgeEvent, reportPath, signalPath };
 }
 
 function extractHeaders(content: string): string[] {
@@ -3209,25 +3276,21 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 		const errorMessage = typeof finalAssistant?.errorMessage === "string" ? finalAssistant.errorMessage : undefined;
 		const kind: "completion" | "failure" = stopReason === "error" || stopReason === "aborted" ? "failure" : "completion";
 		const markdown = buildAutoReportMarkdown({ launch, kind, assistantText, errorMessage });
-		const reportPath = await writeBridgeLatestTerminalReport(currentEnv.bridgeDir, kind, markdown);
-		const bridgeEvent = await appendBridgeEvent(currentEnv.bridgeDir, {
-			launchId: currentEnv.launchId,
-			direction: "child_to_parent",
-			type: kind,
-			from: { agentId: currentEnv.agentId, sessionName: launch.sessionName },
+		await persistPendingTerminalSnapshot(currentEnv.bridgeDir, {
+			kind,
+			assistantText,
 			summary: truncate(assistantText || errorMessage || `${kind} reported by ${currentEnv.agentId}`, 240),
-			reportPath,
+			markdown,
+			errorMessage,
+			capturedAt: nowIso(),
 		});
-		const signalPath = await writeBridgeEventSignal(currentEnv.bridgeDir, bridgeEvent, kind === "completion");
 		await appendAuditLog({
 			timestamp: nowIso(),
-			event: "child_turn_report",
+			event: "child_turn_snapshot",
 			launchId: currentEnv.launchId,
 			bridgeDir: currentEnv.bridgeDir,
 			agentId: currentEnv.agentId,
 			kind,
-			reportPath,
-			signalPath,
 		});
 	});
 
@@ -3258,6 +3321,11 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 				agent_id: currentEnv.agentId,
 				status: "success",
 				created_at: eventRecord.timestamp,
+			});
+			await flushPendingTerminalReport({
+				bridgeDir: currentEnv.bridgeDir,
+				launch,
+				agentId: currentEnv.agentId,
 			});
 		}
 		for (const watcher of bridgeWatchers.values()) watcher.close();

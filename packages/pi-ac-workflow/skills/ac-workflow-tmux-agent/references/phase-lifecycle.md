@@ -19,6 +19,7 @@ This is usually better than keeping one broad worker alive across many different
 
 - default to **headless**
 - use `notificationMode: "notify-and-follow-up"` when phase chaining matters
+- treat `notificationMode: "notify-and-follow-up"` as the settled end-of-session handoff for the child, not as a stage-level or per-turn milestone
 - use `open_visual` only when the user explicitly wants live inspection or the running agent is worth monitoring
 - keep one clear mission per agent
 
@@ -33,6 +34,7 @@ Prompt ingredients:
 - run exact verification commands
 - do not commit or push unless explicitly requested
 - emit a final completion report artifact before stopping
+- do not emit the tmux-agent completion report early; make the tmux-agent report in the CORRECT moment, when it completes the ENTIRE phase work
 
 Expected report shape:
 1. files changed
@@ -88,7 +90,7 @@ When the user adds new requirements while an agent is already running:
 
 When a phase completes:
 
-1. read the completion artifact
+1. read the settled completion artifact
 2. if anything looks suspicious, verify with `status` and `capture`
 3. update the plan/status document
 4. if your workflow uses voice, announce only meaningful milestones such as phase completion or required input
@@ -96,15 +98,17 @@ When a phase completes:
 6. kill the finished agent promptly
 7. launch the next phase
 
+The parent should not proceed because of intermediate capture noise, a stage subagent result, or a partial completion artifact. Proceed only after the settled tmux completion/blocker/failure report has arrived and been verified.
+
 ## Protocol violation handling
 
-If an agent appears done but failed to emit the required final report artifact:
+If an agent appears done but failed to emit the required final report artifact, or emitted a completion report too early:
 
 1. inspect the real live state with `status` and `capture`
 2. capture enough terminal evidence to justify your decision
 3. document the protocol violation in the plan/status document
 4. only continue if the completion state is unambiguous or the human explicitly instructs you to proceed
-5. strengthen the next phase prompt with an explicit requirement not to stop without the final artifact
+5. strengthen the next phase prompt with an explicit requirement not to stop without the final artifact and not to emit the tmux completion report before the ENTIRE phase work is complete
 
 ## Important anti-patterns
 

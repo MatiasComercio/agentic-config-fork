@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package-owned tmux-agent migration parity checks."""
+"""Pinned shipped tmux-agent surface checks."""
 
 from __future__ import annotations
 
@@ -32,24 +32,19 @@ def sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def test_package_extension_matches_repo_owned_global_source_hash() -> None:
-    """The repo-owned extension should match the committed global-source fingerprint exactly."""
+def test_package_extension_matches_pinned_shipped_hash() -> None:
+    """The shipped extension should match the pinned reviewed fingerprint."""
     assert sha256_bytes(PACKAGE_EXTENSION.read_bytes()) == FIXTURE_HASHES["extension_sha256"]
 
 
-def test_package_skill_body_only_changes_surface_ownership_wording() -> None:
-    """The repo-owned skill should preserve the proven body with only package-surface wording adjustments."""
+def test_package_skill_body_matches_pinned_shipped_hash() -> None:
+    """The shipped skill body should match the pinned reviewed fingerprint."""
     package_body = strip_frontmatter(PACKAGE_SKILL.read_text())
-    normalized_to_global_wording = package_body.replace(
-        "Use the shipped `tmux_agent` tool and `/tmux-agent` command for long-lived tmux-backed Pi sessions.",
-        "Use the global `tmux_agent` tool and `/tmux-agent` command for long-lived tmux-backed Pi sessions.",
-        1,
-    )
-    assert sha256_text(normalized_to_global_wording) == FIXTURE_HASHES["skill_body_sha256"]
+    assert sha256_text(package_body) == FIXTURE_HASHES["skill_body_sha256"]
 
 
-def test_package_skill_references_match_repo_owned_global_source_hashes() -> None:
-    """All migrated reference files should match the committed global-source fingerprints exactly."""
+def test_package_skill_references_match_pinned_shipped_hashes() -> None:
+    """The shipped reference files should match the pinned reviewed fingerprints."""
     expected_hashes = FIXTURE_HASHES["reference_sha256"]
     expected_paths = sorted(expected_hashes)
     package_paths = sorted(path.name for path in PACKAGE_SKILL_REFS.glob("*.md"))

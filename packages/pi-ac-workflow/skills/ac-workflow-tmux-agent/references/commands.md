@@ -37,6 +37,7 @@ By default, spawn:
 - notifies the launching session when the child completes
 
 When autonomous follow-up matters, prefer `notificationMode: "notify-and-follow-up"` over plain notify.
+Treat `notificationMode: "notify-and-follow-up"` as the child's settled end-of-session handoff after the child stops with a proper final report artifact, not as a stage-level or per-turn milestone.
 
 ### Watch-live spawn example
 
