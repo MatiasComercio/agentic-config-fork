@@ -2,31 +2,33 @@
 
 ## Purpose
 
-This is the pi-adapted worker protocol for the mux family.
+This is the pi-adapted worker contract for mux.
 
-Use it as the authoritative contract for any bounded worker launched by later mux orchestrators. The current pi runtime does not support nested skill loading inside a worker, so parent mux skills must paste or reference this protocol explicitly when they call the `subagent` tool.
+Workers stay **data-plane only** and do not own control-plane progression. Coordinators own ledger transitions and strict gate progression.
 
-Bundled foundation assets live under:
-- `{{MUX_ROOT}}/tools/`
-- `{{MUX_ROOT}}/protocol/`
-
-The shared protocol reference for later prompt reuse is:
+Companion protocol artifacts:
 - `{{MUX_ROOT}}/protocol/subagent.md`
+- `{{MUX_ROOT}}/protocol/guardrail-policy.md`
+- `{{MUX_ROOT}}/protocol/strict-happy-path-transcript.md`
+- `{{MUX_ROOT}}/protocol/strict-blocker-path-transcript.md`
+- `{{MUX_ROOT}}/protocol/strict-regression-checklist.md`
 
 ## Runtime Differences From Claude
 
-- There is no Claude-style `TaskOutput` tool in the current pi runtime.
+- There is no Claude-style `TaskOutput` tool in current pi runtime.
 - There is no nested `Skill(...)` loader inside a pi worker.
-- Depth stays at one worker layer: coordinator -> subagent.
-- Completion is still verified through report files plus explicit signal files.
+- Worker depth stays at one layer: coordinator -> subagent.
+- Completion is verified through report/signal artifacts plus summary evidence gating.
 
 ## Mandatory Worker Rules
 
 - Write all substantive results to the report file path provided by the parent coordinator.
-- Create a success or failure signal before you finish.
+- Create a success or failure signal before finishing.
 - Keep the final textual response exactly `0` on success.
-- Do not launch nested subagents from inside this protocol.
-- Put routing guidance in the report executive summary so the parent coordinator can decide the next wave efficiently.
+- Do not launch nested `subagent` calls.
+- Do not call `tmux_agent` / `report_parent`; mux workers communicate through report/signal artifacts only.
+- Do not mutate control-plane state (`ledger.py transition`, coordinator dispatch mutation, or manual ADVANCE fallback).
+- Put routing guidance in the report Executive Summary so the coordinator can route the next wave efficiently.
 
 ## Signal Command
 
@@ -65,4 +67,5 @@ Before returning `0`, verify:
 - [ ] Executive Summary has a `### Next Steps` subsection
 - [ ] Signal file created via `{{MUX_ROOT}}/tools/signal.py`
 - [ ] No nested `subagent` calls were made
+- [ ] No `tmux_agent` / `report_parent` calls were made
 - [ ] No substantive content appears in the final response

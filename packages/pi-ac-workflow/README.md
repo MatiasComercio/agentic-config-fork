@@ -37,9 +37,14 @@
 ### Shipped protocol / foundation surface
 - `ac-workflow-mux-subagent`
 - shared mux foundation assets under `assets/mux/`
+- shipped Phase 007 protocol artifacts under `assets/mux/protocol/`:
+  - `guardrail-policy.md`
+  - `strict-happy-path-transcript.md`
+  - `strict-blocker-path-transcript.md`
+  - `strict-regression-checklist.md`
 
 ### Deferred surface
-- Transcript/checklist protocol artifacts and final release-surface closeout remain deferred to later IT005 phases.
+- Final release-surface closeout remains deferred to a later IT005 phase.
 
 ## Layout conventions
 - `skills/` for exported pi skills using namespaced `<plugin>-<resource>` identifiers
@@ -58,6 +63,6 @@
 - The migrated `ac-workflow-tmux-agent` skill and copied references preserve the same command/tool/bridge/hierarchy/report semantics as the proven global source, with only package-surface naming and ownership wording adjusted.
 - The mux family consumes the shared `assets/mux/` foundation and the shipped `ac-workflow-mux-subagent` worker protocol instead of private per-skill copies.
 - The generated pi `mux`, `mux-ospec`, and `mux-roadmap` surfaces are honest runtime adaptations: they use one coordinator layer plus synchronous `subagent` waves, not nested skill loading or task notifications.
-- Phase 004/005/006 now ship the strict runtime seam plus canonical strict consumption across `mux-ospec`, `mux`, and `mux-roadmap`; later IT005 phases remain scoped to transcript/checklist artifacts and final release-surface closeout.
+- Phase 004/005/006 now ship the strict runtime seam plus canonical strict consumption across `mux-ospec`, `mux`, and `mux-roadmap`; Phase 007 now ships guardrail-policy plus transcript/checklist protocol artifacts, and later IT005 work remains scoped to regression-suite automation and final release-surface closeout.
 - The shipped pi `mux-ospec` wrapper assumes an existing spec path, and the shipped pi `mux-roadmap` wrapper assumes an already-structured roadmap with a live `## Implementation Progress` mirror; neither wrapper recreates the original Claude bootstrap/flag surface inside pi.
 - Presence of this package directory does not imply that the broader repository has no remaining deferred work in other plugin families or in broader generic subagent/runtime parity.

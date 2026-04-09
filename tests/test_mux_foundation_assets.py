@@ -283,6 +283,15 @@ def test_generated_mux_claude_frontmatter_survives_generation() -> None:
 
 def test_generated_pi_mux_foundation_assets_exist() -> None:
     """The pi workflow package should ship mux foundation assets and skill family."""
+    protocol_files = [
+        "subagent.md",
+        "foundation.md",
+        "guardrail-policy.md",
+        "strict-happy-path-transcript.md",
+        "strict-blocker-path-transcript.md",
+        "strict-regression-checklist.md",
+    ]
+
     assert (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "README.md").exists()
     assert (MUX_TOOLS_ROOT / "session.py").exists()
     assert (MUX_TOOLS_ROOT / "ledger.py").exists()
@@ -294,10 +303,18 @@ def test_generated_pi_mux_foundation_assets_exist() -> None:
     assert PI_MUX_SUBAGENT_SKILL.exists()
     assert (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "extensions" / "strict-mux-runtime" / "index.js").exists()
 
+    package_protocol_root = PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "protocol"
+    plugin_protocol_root = PROJECT_ROOT / "plugins" / "ac-workflow" / "mux" / "protocol"
+    for protocol_file in protocol_files:
+        assert (package_protocol_root / protocol_file).exists()
+        assert (plugin_protocol_root / protocol_file).exists()
+
     subagent_text = PI_MUX_SUBAGENT_SKILL.read_text()
     assert "../../assets/mux/tools/signal.py" in subagent_text
     assert "../../assets/mux/protocol/subagent.md" in subagent_text
-    assert "Do not launch nested subagents" in subagent_text
+    assert "data-plane only" in subagent_text
+    assert "Do not launch nested `subagent` calls" in subagent_text
+    assert "Do not call `tmux_agent` / `report_parent`" in subagent_text
 
 
 def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
@@ -355,18 +372,48 @@ def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
     assert "MUX_OSPEC_ACK" not in mux_roadmap_text
 
 
-def test_generated_pi_mux_foundation_docs_reflect_phase_006_boundary() -> None:
-    """Generated shared mux docs should reflect the Phase 006 sibling strict boundary."""
+def test_generated_pi_mux_foundation_docs_reflect_phase_007_asset_boundary() -> None:
+    """Generated shared mux docs should reflect the shipped Phase 007 artifact boundary."""
     foundation_text = (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "protocol" / "foundation.md").read_text()
     assert "Phase 005 hardens `mux-ospec` as the canonical strict consumer." in foundation_text
     assert "Phase 006 aligns sibling `mux` / `mux-roadmap` surfaces to the strict control-plane contract" in foundation_text
-    assert "Phase 004/005/006 now ship the strict runtime seam plus canonical strict consumption across `mux-ospec`, `mux`, and `mux-roadmap`" in foundation_text
-    assert "later phases still own sibling `mux` / `mux-roadmap` strict alignment" not in foundation_text
+    assert "Phase 007 ships the guardrail-policy split plus transcript/checklist protocol artifacts for deterministic strict-flow documentation." in foundation_text
+    assert "later phases still own transcripts/checklists and final release-surface alignment" not in foundation_text
 
     mux_assets_readme = (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "README.md").read_text()
-    assert "Phase 004/005/006 now ship the runtime seam plus strict control-plane consumption across `mux-ospec`, `mux`, and `mux-roadmap`" in mux_assets_readme
-    assert "Later IT005 phases still own transcript/checklist artifacts and final release-surface closeout." in mux_assets_readme
-    assert "later IT005 phases still own sibling `mux` / `mux-roadmap` strict alignment" not in mux_assets_readme
+    assert "Phase 004/005/006 now ship the runtime seam plus strict control-plane consumption across `mux-ospec`, `mux`, and `mux-roadmap`." in mux_assets_readme
+    assert "Phase 007 now ships guardrail-policy and transcript/checklist protocol artifacts under `assets/mux/protocol/`." in mux_assets_readme
+    assert "Later IT005 phases still own transcript/checklist artifacts and final release-surface closeout." not in mux_assets_readme
+
+
+def test_generated_pi_mux_protocol_artifacts_cover_phase_007_contract() -> None:
+    """Generated protocol artifacts should document strict happy/blocker semantics honestly."""
+    protocol_root = PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "protocol"
+
+    subagent_text = (protocol_root / "subagent.md").read_text()
+    assert "data-plane" in subagent_text
+    assert "final textual response exactly `0`" in subagent_text
+    assert "Do not call `tmux_agent` / `report_parent`" in subagent_text
+
+    guardrail_text = (protocol_root / "guardrail-policy.md").read_text()
+    assert "Guardrail layer matrix" in guardrail_text
+    assert "Strict runtime" in guardrail_text
+    assert "Hook guard" in guardrail_text
+    assert "Worker protocol prose" in guardrail_text
+
+    happy_transcript = (protocol_root / "strict-happy-path-transcript.md").read_text()
+    assert "--strict-runtime" in happy_transcript
+    assert '"gate_status": "advance"' in happy_transcript
+    assert '"control_state": "ADVANCE"' in happy_transcript
+
+    blocker_transcript = (protocol_root / "strict-blocker-path-transcript.md").read_text()
+    assert '"gate_status": "block"' in blocker_transcript
+    assert '"control_state": "BLOCK"' in blocker_transcript
+    assert "ERROR: Illegal transition: BLOCK -> ADVANCE" in blocker_transcript
+
+    checklist_text = (protocol_root / "strict-regression-checklist.md").read_text()
+    assert "**A01**" in checklist_text
+    assert "**F03**" in checklist_text
 
 
 def test_generated_mux_tools_support_session_signal_and_summary_flow(tmp_path: Path) -> None:

@@ -61,6 +61,18 @@ def test_generator_plugin_filter_stays_within_seeded_scope() -> None:
     assert (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-tmux-agent" / "SKILL.md").exists()
     assert (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "extensions" / "tmux-agent" / "index.ts").exists()
 
+    protocol_files = [
+        "subagent.md",
+        "foundation.md",
+        "guardrail-policy.md",
+        "strict-happy-path-transcript.md",
+        "strict-blocker-path-transcript.md",
+        "strict-regression-checklist.md",
+    ]
+    for protocol_file in protocol_files:
+        assert (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "protocol" / protocol_file).exists()
+        assert (PROJECT_ROOT / "plugins" / "ac-workflow" / "mux" / "protocol" / protocol_file).exists()
+
 
 def test_generator_keeps_mux_ospec_strict_markers_in_sync() -> None:
     """Canonical and generated mux-ospec surfaces should share strict-consumer markers."""
@@ -151,6 +163,34 @@ def test_generator_keeps_mux_sibling_strict_markers_in_sync() -> None:
         generated_roadmap_skill,
     ):
         assert "MUX_OSPEC_ACK" not in sibling_surface
+
+
+def test_generator_keeps_mux_subagent_data_plane_markers_in_sync() -> None:
+    """Canonical and generated mux-subagent surfaces should share data-plane contract markers."""
+    canonical_pi_body = (
+        PROJECT_ROOT / "canonical" / "ac-workflow" / "skills" / "mux-subagent" / "body.pi.md"
+    ).read_text()
+    generated_pi_skill = (
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-mux-subagent" / "SKILL.md"
+    ).read_text()
+    canonical_claude_body = (
+        PROJECT_ROOT / "canonical" / "ac-workflow" / "skills" / "mux-subagent" / "body.md"
+    ).read_text()
+    generated_claude_skill = (
+        PROJECT_ROOT / "plugins" / "ac-workflow" / "skills" / "mux-subagent" / "SKILL.md"
+    ).read_text()
+
+    markers = [
+        "data-plane only",
+        "exactly `0` on success",
+        "Do not launch nested `subagent` calls",
+        "Do not call `tmux_agent` / `report_parent`",
+    ]
+    for marker in markers:
+        assert marker in canonical_pi_body
+        assert marker in generated_pi_skill
+        assert marker in canonical_claude_body
+        assert marker in generated_claude_skill
 
 
 def test_generator_ships_worktree_and_gh_pr_review_on_shared_runtime() -> None:
@@ -318,7 +358,9 @@ def test_mux_documentation_surfaces_match_current_generated_boundary() -> None:
     assert "project-agnostic surface instead of relying on a user-global-only install" in workflow_readme
     assert "session.py --strict-runtime" in workflow_readme
     assert "canonical strict consumption across `mux-ospec`, `mux`, and `mux-roadmap`" in workflow_readme
-    assert "Transcript/checklist protocol artifacts and final release-surface closeout remain deferred" in workflow_readme
+    assert "shipped Phase 007 protocol artifacts under `assets/mux/protocol/`" in workflow_readme
+    assert "Phase 007 now ships guardrail-policy plus transcript/checklist protocol artifacts" in workflow_readme
+    assert "Transcript/checklist protocol artifacts and final release-surface closeout remain deferred" not in workflow_readme
     assert "Strict sibling alignment for `ac-workflow-mux` and `ac-workflow-mux-roadmap` remains deferred" not in workflow_readme
 
     hook_compat_readme = (PROJECT_ROOT / "packages" / "pi-compat" / "extensions" / "hook-compat" / "README.md").read_text()

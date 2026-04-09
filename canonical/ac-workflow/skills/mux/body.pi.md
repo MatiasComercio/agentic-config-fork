@@ -55,6 +55,7 @@ That means you launch a worker wave, wait for the `subagent` call to return, the
 - Keep direct coordinator edits limited to orchestration state, consolidation, and small shared-surface reconciliations.
 - Delegate domain work, research, and large implementation chunks to fresh subagents whenever isolated context helps.
 - Never let a worker launch another worker.
+- Only the mux coordinator may communicate upward to a parent tmux hierarchy; workers return report/signal artifacts only and must not call `tmux_agent` / `report_parent`.
 - Prefer one fresh worker per wave or per review/fix retry.
 - Reuse the shared mux tools instead of inventing ad hoc session or signal helpers.
 - This skill stays wave-oriented; it does not own roadmap DAG resolution or phase selection logic.
@@ -69,6 +70,7 @@ At minimum, every worker prompt must tell the worker to:
 - create a success or failure signal with `{{MUX_ROOT}}/tools/signal.py`
 - return exactly `0` on success
 - avoid nested `subagent` calls
+- do not call `tmux_agent` / `report_parent` from the worker
 
 ## Declared dispatch and evidence gates
 

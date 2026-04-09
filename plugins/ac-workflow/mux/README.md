@@ -10,7 +10,14 @@ This tree is the shared mux runtime substrate for canonical `ac-workflow` mux su
 ## Layout
 - `tools/` — session, signal, ledger, verification, and bounded-summary helpers
 - `subagent-hooks/` — subagent-only hook guards for harnesses that support skill-scoped hooks
-- `protocol/` — pi-adapted foundation and worker-protocol reference docs
+- `protocol/` — pi-adapted foundation, worker protocol, guardrail policy, strict transcripts, and strict regression checklist
+
+## Protocol artifact set (Phase 007)
+- `protocol/subagent.md`
+- `protocol/guardrail-policy.md`
+- `protocol/strict-happy-path-transcript.md`
+- `protocol/strict-blocker-path-transcript.md`
+- `protocol/strict-regression-checklist.md`
 
 ## Shared protocol-state ledger
 - Authoritative session-local ledger file: `<session_dir>/.mux-ledger.json`
@@ -40,9 +47,9 @@ This tree is the shared mux runtime substrate for canonical `ac-workflow` mux su
 - Shared assets own protocol-state and gate-helper behavior.
 - The workflow package-local `strict-mux-runtime` extension consumes the strict activation artifacts plus the shared ledger to enforce fail-closed coordinator behavior for deliberately activated strict sessions.
 - Phase 004/005/006 now ship the runtime seam plus strict control-plane consumption across `mux-ospec`, `mux`, and `mux-roadmap`.
-- Later IT005 phases still own transcript/checklist artifacts and final release-surface closeout.
+- Phase 007 now ships guardrail-policy and transcript/checklist protocol artifacts under `assets/mux/protocol/`.
 
 ## Current rendered root
-- `../../assets/mux`
+- `${CLAUDE_PLUGIN_ROOT}/mux`
 
-The generator resolves `../../assets/mux` per harness so wrappers can reference one logical foundation root while the copied assets land in the correct package or plugin path for the current render.
+The generator resolves `${CLAUDE_PLUGIN_ROOT}/mux` per harness so wrappers can reference one logical foundation root while the copied assets land in the correct package or plugin path for the current render.
