@@ -20,13 +20,27 @@ If you need a brand-new spec, create it first with the repository's normal spec 
 
 ## Mandatory first actions
 
-1. Start a mux session:
+For an explicit `mux-ospec` request, your first coordinator response must start with this strict contract block before ordinary stage execution:
 
-```bash
-uv run {{MUX_ROOT}}/tools/session.py "mux-ospec-<topic>"
+```text
+MUX_OSPEC_ACK
+Resolved target spec path: <project-relative-or-absolute-spec-path>
+Strict session init: uv run {{MUX_ROOT}}/tools/session.py --strict-runtime --session-key <key> "mux-ospec-<topic>"
+Stage 001 declaration plan:
+- confirm/create <spec-stages>/001-gather.md
+- declare Stage 001 GATHER objective + report path + signal path
+- dispatch exactly one scout worker (no nested subagents)
 ```
 
-2. Resolve the target spec path.
+Then execute these actions in order:
+
+1. Start the strict mux session:
+
+```bash
+uv run {{MUX_ROOT}}/tools/session.py --strict-runtime --session-key <key> "mux-ospec-<topic>"
+```
+
+2. Resolve and restate the target spec path.
 3. If the target does not exist yet, create the spec first using the repository's canonical spec location and then continue.
 4. Create or confirm the sibling stage directory:
 
@@ -151,6 +165,13 @@ uv run {{MUX_ROOT}}/tools/extract-summary.py <report-path>
 Use `check-signals.py` when you only need an expected-count confirmation.
 
 Do not advance stages on intent alone. Advance only on written artifacts and explicit verification.
+
+## Strict-mode gate semantics
+
+When running under the strict session contract:
+- missing prerequisites or missing written report/signal/summary evidence must route to `BLOCK`
+- protocol-invalid dispatch payloads or inconsistent evidence must route to `RECOVER`
+- manual fallback outside this protocol is forbidden (no manual stage advancement, no bypassing gate/ledger checks)
 
 ## Parallelism policy
 

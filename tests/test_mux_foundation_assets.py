@@ -313,12 +313,29 @@ def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
     assert "sibling `-stages/` directory" in mux_ospec_text
     assert "does not recreate the original inline CREATE/bootstrap flow" in mux_ospec_text
     assert "no nested `Skill(...)`" in mux_ospec_text
+    assert "MUX_OSPEC_ACK" in mux_ospec_text
+    assert "--strict-runtime --session-key <key>" in mux_ospec_text
+    assert "Resolved target spec path:" in mux_ospec_text
+    assert "Stage 001 declaration plan:" in mux_ospec_text
+    assert "route to `BLOCK`" in mux_ospec_text
+    assert "route to `RECOVER`" in mux_ospec_text
+    assert "manual fallback outside this protocol is forbidden" in mux_ospec_text
 
     mux_roadmap_text = PI_MUX_ROADMAP_SKILL.read_text()
     assert "Roadmap `## Implementation Progress` section = cross-phase mirror." in mux_roadmap_text
     assert "Do not invent a separate `CONTINUE.md` by default" in mux_roadmap_text
     assert "one worker layer only: coordinator -> subagent" in mux_roadmap_text
     assert "does not recreate the original Claude-only `start` / `continue` / `--wait-after-plan` bootstrap surface" in mux_roadmap_text
+
+
+def test_generated_pi_mux_foundation_docs_reflect_phase_005_boundary() -> None:
+    """Generated shared mux docs should reflect the Phase 005 strict-consumer boundary."""
+    foundation_text = (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "protocol" / "foundation.md").read_text()
+    assert "Phase 005 now hardens `mux-ospec` as the canonical strict consumer." in foundation_text
+    assert "Phase 004/005 now ship the strict runtime seam plus canonical strict `mux-ospec` consumption" in foundation_text
+
+    mux_assets_readme = (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "README.md").read_text()
+    assert "Phase 004/005 now ship the runtime seam plus canonical strict `mux-ospec` consumption" in mux_assets_readme
 
 
 def test_generated_mux_tools_support_session_signal_and_summary_flow(tmp_path: Path) -> None:

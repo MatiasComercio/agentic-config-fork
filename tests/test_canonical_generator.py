@@ -62,6 +62,29 @@ def test_generator_plugin_filter_stays_within_seeded_scope() -> None:
     assert (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "extensions" / "tmux-agent" / "index.ts").exists()
 
 
+def test_generator_keeps_mux_ospec_strict_markers_in_sync() -> None:
+    """Canonical and generated mux-ospec surfaces should share strict-consumer markers."""
+    canonical_pi_body = (
+        PROJECT_ROOT / "canonical" / "ac-workflow" / "skills" / "mux-ospec" / "body.pi.md"
+    ).read_text()
+    generated_pi_skill = (
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-mux-ospec" / "SKILL.md"
+    ).read_text()
+
+    markers = [
+        "MUX_OSPEC_ACK",
+        "--strict-runtime --session-key <key>",
+        "Resolved target spec path:",
+        "Stage 001 declaration plan:",
+        "route to `BLOCK`",
+        "route to `RECOVER`",
+        "manual fallback outside this protocol is forbidden",
+    ]
+    for marker in markers:
+        assert marker in canonical_pi_body
+        assert marker in generated_pi_skill
+
+
 def test_generator_ships_worktree_and_gh_pr_review_on_shared_runtime() -> None:
     """`worktree` and `gh-pr-review` should now ship on the bounded shared runtime."""
     result = run_generator("--check", "--plugin", "ac-git", "--plugin", "ac-qa")
@@ -226,6 +249,8 @@ def test_mux_documentation_surfaces_match_current_generated_boundary() -> None:
     assert "package-local `strict-mux-runtime` extension" in workflow_readme
     assert "project-agnostic surface instead of relying on a user-global-only install" in workflow_readme
     assert "session.py --strict-runtime" in workflow_readme
+    assert "canonical strict `mux-ospec` consumption" in workflow_readme
+    assert "Strict sibling alignment for `ac-workflow-mux` and `ac-workflow-mux-roadmap` remains deferred" in workflow_readme
 
     hook_compat_readme = (PROJECT_ROOT / "packages" / "pi-compat" / "extensions" / "hook-compat" / "README.md").read_text()
     assert "Shared hook-adapter foundation" in hook_compat_readme

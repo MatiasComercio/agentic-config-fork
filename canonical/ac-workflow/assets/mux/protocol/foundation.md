@@ -63,13 +63,13 @@ The shared ledger enforces these transitions:
 - The contract requires declared dispatch `report_path` / `signal_path` to be project-root-relative.
 - Worker reports and summary-evidence artifacts should use project-root-relative paths so verification stays deterministic across sessions.
 
-## Shipped Phase 004 runtime boundary
+## Shipped Phase 004+005 runtime boundary
 - The package-local `strict-mux-runtime` extension consumes the strict activation artifacts plus this persisted ledger contract to enforce fail-closed coordinator behavior.
 - Strict Phase 004 dispatch supports one authoritative declared dispatch at a time; ambiguous `subagent.tasks` / `subagent.chain` launches remain out of scope and should fail closed under strict mode.
-- Strict Phase 004 coordinator mutation allowance stays narrow and orchestration-focused; later phases own the canonical strict mux skill-family alignment.
+- Strict Phase 004 coordinator mutation allowance stays narrow and orchestration-focused; Phase 005 now hardens `mux-ospec` as the canonical strict consumer.
 
 ## Boundary for later phases
 - This foundation does not claim automatic task-notification support.
 - This foundation does not claim nested skill loading inside workers.
-- Phase 004 now ships the package-local strict runtime seam, but later phases still own strict mux skill hardening, transcripts/checklists, and final release-surface alignment.
+- Phase 004/005 now ship the strict runtime seam plus canonical strict `mux-ospec` consumption; later phases still own sibling `mux` / `mux-roadmap` strict alignment, transcripts/checklists, and final release-surface alignment.
 - Later phases should consume this asset root and protocol, not recreate local copies of the same helpers.
