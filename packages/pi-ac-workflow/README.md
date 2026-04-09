@@ -30,7 +30,7 @@
 
 ### Shipped strict mux runtime surface
 - package-local `strict-mux-runtime` extension under `extensions/strict-mux-runtime/index.js`
-- explicit strict-session activation via `assets/mux/tools/session.py --strict-runtime`
+- explicit strict-session activation via `assets/mux/tools/session.py --strict-runtime --session-key <key>`
 - session-key-scoped strict activation artifacts under `outputs/session/mux-runtime/`
 - fail-closed ledger-backed coordinator enforcement for deliberately activated strict sessions only
 
@@ -58,7 +58,7 @@
 - The package-local `tmux-agent` extension preserves the exact proven `/tmux-agent` command and `tmux_agent` tool logic in a repo-owned, project-agnostic surface instead of relying on a user-global-only install.
 - The shipped tmux-agent settlement contract now requires explicit child `closeout` plus child exit for success, settles undeclared exits as `protocol_violation`, keeps `progress` non-terminal/non-follow-up by default, and exposes settled bridge state through status surfaces.
 - The package-local `strict-mux-runtime` extension keeps strict mux ownership inside the workflow package rather than shifting mux semantics into generic compat hooks or user-global runtime state.
-- The strict mux runtime surface activates only for explicit `session.py --strict-runtime` sessions tied to a current pi session key; the legacy `mux-active` marker remains observability-only.
+- The strict mux runtime surface activates only for explicit `session.py --strict-runtime --session-key <key>` sessions tied to a current pi session key; the legacy `mux-active` marker remains observability-only.
 - The strict runtime surface consumes the shared `assets/mux/` ledger/gate substrate, validates one declared strict `subagent` dispatch at a time, and fails closed when strict activation exists but the ledger is missing or invalid.
 - The migrated `ac-workflow-tmux-agent` skill and copied references preserve the same command/tool/bridge/hierarchy/report semantics as the proven global source, with only package-surface naming and ownership wording adjusted.
 - The mux family consumes the shared `assets/mux/` foundation and the shipped `ac-workflow-mux-subagent` worker protocol instead of private per-skill copies.

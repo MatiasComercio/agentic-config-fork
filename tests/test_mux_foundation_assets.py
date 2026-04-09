@@ -403,17 +403,46 @@ def test_generated_pi_mux_protocol_artifacts_cover_phase_007_contract() -> None:
 
     happy_transcript = (protocol_root / "strict-happy-path-transcript.md").read_text()
     assert "--strict-runtime" in happy_transcript
+    assert "--session-key phase-007-happy-key" in happy_transcript
+    assert "REPORT_PATH=tmp/mux/phase-007/reports/strict-happy-runtime-worker.md" in happy_transcript
+    assert 'SIGNAL_PATH="${SESSION_DIR}/.signals/strict-happy-runtime-worker.done"' in happy_transcript
+    assert 'SUMMARY_EVIDENCE_PATH="${SESSION_DIR}/research/strict-happy-runtime-summary-evidence.json"' in happy_transcript
+    assert 'extract-summary.py "$REPORT_PATH"' in happy_transcript
+    assert "--evidence" in happy_transcript
+    assert '--evidence-path "$SUMMARY_EVIDENCE_PATH"' in happy_transcript
+    assert 'verify.py "$SESSION_DIR"' in happy_transcript
+    assert "--action gate" in happy_transcript
+    assert '--summary-evidence "$SUMMARY_EVIDENCE_PATH"' in happy_transcript
     assert '"gate_status": "advance"' in happy_transcript
     assert '"control_state": "ADVANCE"' in happy_transcript
 
     blocker_transcript = (protocol_root / "strict-blocker-path-transcript.md").read_text()
+    assert "--strict-runtime" in blocker_transcript
+    assert "--session-key phase-007-blocker-key" in blocker_transcript
+    assert "REPORT_PATH=tmp/mux/phase-007/reports/strict-blocker-runtime-worker.md" in blocker_transcript
+    assert 'SIGNAL_PATH="${SESSION_DIR}/.signals/strict-blocker-runtime-worker.done"' in blocker_transcript
+    assert (
+        'MISSING_SUMMARY_EVIDENCE_PATH="${SESSION_DIR}/research/strict-blocker-runtime-summary-evidence.json"'
+        in blocker_transcript
+    )
+    assert 'verify.py "$SESSION_DIR"' in blocker_transcript
+    assert "--action gate" in blocker_transcript
+    assert '--summary-evidence "$MISSING_SUMMARY_EVIDENCE_PATH"' in blocker_transcript
     assert '"gate_status": "block"' in blocker_transcript
     assert '"control_state": "BLOCK"' in blocker_transcript
     assert "ERROR: Illegal transition: BLOCK -> ADVANCE" in blocker_transcript
 
     checklist_text = (protocol_root / "strict-regression-checklist.md").read_text()
     assert "**A01**" in checklist_text
+    assert "**B01**" in checklist_text
+    assert "**B02**" in checklist_text
+    assert "**B03**" in checklist_text
+    assert "**C02**" in checklist_text
     assert "**F03**" in checklist_text
+    assert "project-root-relative report/signal/summary paths." in checklist_text
+    assert "extract-summary.py --evidence --evidence-path <path>" in checklist_text
+    assert "verify.py --action gate --summary-evidence <path>" in checklist_text
+    assert "session.py --strict-runtime --session-key <key>" in checklist_text
 
 
 def test_generated_mux_tools_support_session_signal_and_summary_flow(tmp_path: Path) -> None:

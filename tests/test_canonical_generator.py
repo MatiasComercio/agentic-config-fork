@@ -356,7 +356,8 @@ def test_mux_documentation_surfaces_match_current_generated_boundary() -> None:
     assert "package-local `tmux-agent` extension" in workflow_readme
     assert "package-local `strict-mux-runtime` extension" in workflow_readme
     assert "project-agnostic surface instead of relying on a user-global-only install" in workflow_readme
-    assert "session.py --strict-runtime" in workflow_readme
+    assert "assets/mux/tools/session.py --strict-runtime --session-key <key>" in workflow_readme
+    assert "explicit `session.py --strict-runtime --session-key <key>` sessions tied to a current pi session key" in workflow_readme
     assert "canonical strict consumption across `mux-ospec`, `mux`, and `mux-roadmap`" in workflow_readme
     assert "shipped Phase 007 protocol artifacts under `assets/mux/protocol/`" in workflow_readme
     assert "Phase 007 now ships guardrail-policy plus transcript/checklist protocol artifacts" in workflow_readme
