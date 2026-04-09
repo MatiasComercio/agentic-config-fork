@@ -70,7 +70,7 @@ Do not invent a separate `CONTINUE.md` by default when the roadmap already has a
 For every roadmap stage dispatch:
 
 1. Resolve prerequisites for the active phase/stage in the control-plane.
-2. Declare dispatch with explicit objective, scope, `report_path`, `signal_path`, expected `report|signal|summary` evidence, and `no_nested_subagents=true`.
+2. Declare dispatch with explicit `worker_type`, objective, scope, `report_path`, `signal_path`, expected `report|signal|summary` evidence, and `no_nested_subagents=true`.
 3. Dispatch only after declaration is valid.
 4. Produce summary evidence for each required report:
 
@@ -163,16 +163,31 @@ If the phase file and roadmap disagree, the phase file wins.
 
 ## Validation pattern
 
-Use the shared mux tools for bounded verification:
+Use the shared mux tools with strict gate semantics:
+
+1. Produce summary evidence for each required report artifact:
+
+```bash
+uv run {{MUX_ROOT}}/tools/extract-summary.py <report-path> --evidence --evidence-path <summary-evidence-path>
+```
+
+2. Gate roadmap/phase advancement only through persisted evidence:
+
+```bash
+uv run {{MUX_ROOT}}/tools/verify.py <session-dir> --action gate --summary-evidence <summary-evidence-path>
+```
+
+3. Use summary/check-signals commands for observability only (never for advancement):
 
 ```bash
 uv run {{MUX_ROOT}}/tools/verify.py <session-dir> --action summary
+uv run {{MUX_ROOT}}/tools/check-signals.py <session-dir> --expected <N>
 uv run {{MUX_ROOT}}/tools/extract-summary.py <report-path>
 ```
 
 Use direct coordinator validation for repository commands, type checks, tests, and smoke checks.
 
-Only advance the roadmap when the phase artifacts and the roadmap mirror both reflect reality.
+Only advance the roadmap when the phase artifacts and the roadmap mirror both reflect reality, and the strict gate result is `ADVANCE`. No manual coordinator advancement outside the protocol.
 
 ## Resume behavior
 

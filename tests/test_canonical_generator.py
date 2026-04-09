@@ -130,7 +130,9 @@ def test_generator_keeps_mux_sibling_strict_markers_in_sync() -> None:
         "control-plane",
         "data-plane",
         "declared dispatch",
+        "`worker_type`",
         "report/signal/summary evidence",
+        "--action gate --summary-evidence <summary-evidence-path>",
         "Summary-only inspection is not sufficient for roadmap or phase advancement.",
         "Update the phase artifacts first.",
         "Reconcile the roadmap mirror second.",
@@ -141,6 +143,14 @@ def test_generator_keeps_mux_sibling_strict_markers_in_sync() -> None:
     for marker in roadmap_markers:
         assert marker in canonical_roadmap_body
         assert marker in generated_roadmap_skill
+
+    for sibling_surface in (
+        canonical_mux_body,
+        generated_mux_skill,
+        canonical_roadmap_body,
+        generated_roadmap_skill,
+    ):
+        assert "MUX_OSPEC_ACK" not in sibling_surface
 
 
 def test_generator_ships_worktree_and_gh_pr_review_on_shared_runtime() -> None:

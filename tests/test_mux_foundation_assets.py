@@ -314,6 +314,7 @@ def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
     assert "route to `BLOCK`" in mux_text
     assert "route to `RECOVER`" in mux_text
     assert "manual fallback outside this protocol is forbidden" in mux_text
+    assert "MUX_OSPEC_ACK" not in mux_text
 
     mux_ospec_text = PI_MUX_OSPEC_SKILL.read_text()
     assert "argument-hint: '[modifier] [spec_path]'" in mux_ospec_text
@@ -341,7 +342,9 @@ def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
     assert "control-plane" in mux_roadmap_text
     assert "data-plane" in mux_roadmap_text
     assert "declared dispatch" in mux_roadmap_text
+    assert "`worker_type`" in mux_roadmap_text
     assert "report/signal/summary evidence" in mux_roadmap_text
+    assert "--action gate --summary-evidence <summary-evidence-path>" in mux_roadmap_text
     assert "Summary-only inspection is not sufficient for roadmap or phase advancement." in mux_roadmap_text
     assert "Resolve the next unblocked phase from the roadmap's DAG" in mux_roadmap_text
     assert "Update the phase artifacts first." in mux_roadmap_text
@@ -349,6 +352,7 @@ def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
     assert "route to `BLOCK`" in mux_roadmap_text
     assert "route to `RECOVER`" in mux_roadmap_text
     assert "manual fallback outside this protocol is forbidden" in mux_roadmap_text
+    assert "MUX_OSPEC_ACK" not in mux_roadmap_text
 
 
 def test_generated_pi_mux_foundation_docs_reflect_phase_006_boundary() -> None:
