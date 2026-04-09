@@ -301,11 +301,19 @@ def test_generated_pi_mux_foundation_assets_exist() -> None:
 
 
 def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
-    """Generated pi mux orchestrators should consume the shared foundation honestly."""
+    """Generated pi mux orchestrators should consume the shared strict foundation honestly."""
     mux_text = PI_MUX_SKILL.read_text()
     assert "../../assets/mux/protocol/foundation.md" in mux_text
     assert "Use a single `subagent` call" in mux_text
     assert "coordinator -> subagent" in mux_text
+    assert "--strict-runtime --session-key <key>" in mux_text
+    assert "control-plane" in mux_text
+    assert "data-plane" in mux_text
+    assert "declared dispatch" in mux_text
+    assert "report/signal/summary evidence" in mux_text
+    assert "route to `BLOCK`" in mux_text
+    assert "route to `RECOVER`" in mux_text
+    assert "manual fallback outside this protocol is forbidden" in mux_text
 
     mux_ospec_text = PI_MUX_OSPEC_SKILL.read_text()
     assert "argument-hint: '[modifier] [spec_path]'" in mux_ospec_text
@@ -329,16 +337,32 @@ def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
     assert "Do not invent a separate `CONTINUE.md` by default" in mux_roadmap_text
     assert "one worker layer only: coordinator -> subagent" in mux_roadmap_text
     assert "does not recreate the original Claude-only `start` / `continue` / `--wait-after-plan` bootstrap surface" in mux_roadmap_text
+    assert "--strict-runtime --session-key <key>" in mux_roadmap_text
+    assert "control-plane" in mux_roadmap_text
+    assert "data-plane" in mux_roadmap_text
+    assert "declared dispatch" in mux_roadmap_text
+    assert "report/signal/summary evidence" in mux_roadmap_text
+    assert "Summary-only inspection is not sufficient for roadmap or phase advancement." in mux_roadmap_text
+    assert "Resolve the next unblocked phase from the roadmap's DAG" in mux_roadmap_text
+    assert "Update the phase artifacts first." in mux_roadmap_text
+    assert "Reconcile the roadmap mirror second." in mux_roadmap_text
+    assert "route to `BLOCK`" in mux_roadmap_text
+    assert "route to `RECOVER`" in mux_roadmap_text
+    assert "manual fallback outside this protocol is forbidden" in mux_roadmap_text
 
 
-def test_generated_pi_mux_foundation_docs_reflect_phase_005_boundary() -> None:
-    """Generated shared mux docs should reflect the Phase 005 strict-consumer boundary."""
+def test_generated_pi_mux_foundation_docs_reflect_phase_006_boundary() -> None:
+    """Generated shared mux docs should reflect the Phase 006 sibling strict boundary."""
     foundation_text = (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "protocol" / "foundation.md").read_text()
-    assert "Phase 005 now hardens `mux-ospec` as the canonical strict consumer." in foundation_text
-    assert "Phase 004/005 now ship the strict runtime seam plus canonical strict `mux-ospec` consumption" in foundation_text
+    assert "Phase 005 hardens `mux-ospec` as the canonical strict consumer." in foundation_text
+    assert "Phase 006 aligns sibling `mux` / `mux-roadmap` surfaces to the strict control-plane contract" in foundation_text
+    assert "Phase 004/005/006 now ship the strict runtime seam plus canonical strict consumption across `mux-ospec`, `mux`, and `mux-roadmap`" in foundation_text
+    assert "later phases still own sibling `mux` / `mux-roadmap` strict alignment" not in foundation_text
 
     mux_assets_readme = (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "README.md").read_text()
-    assert "Phase 004/005 now ship the runtime seam plus canonical strict `mux-ospec` consumption" in mux_assets_readme
+    assert "Phase 004/005/006 now ship the runtime seam plus strict control-plane consumption across `mux-ospec`, `mux`, and `mux-roadmap`" in mux_assets_readme
+    assert "Later IT005 phases still own transcript/checklist artifacts and final release-surface closeout." in mux_assets_readme
+    assert "later IT005 phases still own sibling `mux` / `mux-roadmap` strict alignment" not in mux_assets_readme
 
 
 def test_generated_mux_tools_support_session_signal_and_summary_flow(tmp_path: Path) -> None:

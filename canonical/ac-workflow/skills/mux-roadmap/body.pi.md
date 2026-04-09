@@ -26,14 +26,24 @@ Use it to execute an already-structured roadmap honestly on top of the shared pi
 ## Mandatory first actions
 
 1. Read the roadmap file.
-2. Start a mux session:
+2. Start a strict mux session:
 
 ```bash
-uv run {{MUX_ROOT}}/tools/session.py "mux-roadmap-<topic>"
+uv run {{MUX_ROOT}}/tools/session.py --strict-runtime --session-key <key> "mux-roadmap-<topic>"
 ```
 
 3. Read the roadmap's live progress section before touching implementation.
 4. Resolve the next unblocked phase from the roadmap's DAG and next-action notes.
+
+## Strict control-plane vs data-plane roadmap contract
+
+- **Control-plane (roadmap coordinator-owned):** DAG resolution, next-phase selection, declared dispatch payloads, verification, and `ADVANCE | BLOCK | RECOVER` decisions.
+- **Data-plane (worker-owned):** bounded stage execution and report/signal artifacts.
+- Roadmap and phase advancement require declared dispatch plus report/signal/summary evidence.
+- Missing prerequisites or missing report/signal/summary evidence must route to `BLOCK`.
+- Protocol-invalid declared dispatch payloads or inconsistent evidence must route to `RECOVER`.
+- Summary-only inspection is not sufficient for roadmap or phase advancement.
+- manual fallback outside this protocol is forbidden.
 
 ## Default state model for pi roadmaps
 
@@ -54,6 +64,32 @@ Do not invent a separate `CONTINUE.md` by default when the roadmap already has a
 - Do not delegate “run this whole roadmap” or “run this whole phase” to another coordinator.
 - Use fresh workers for bounded stage tasks, not for hidden orchestration layers.
 - Keep shared surfaces serialized even when the DAG allows parallel tracks.
+
+## Declared dispatch and evidence gates
+
+For every roadmap stage dispatch:
+
+1. Resolve prerequisites for the active phase/stage in the control-plane.
+2. Declare dispatch with explicit objective, scope, `report_path`, `signal_path`, expected `report|signal|summary` evidence, and `no_nested_subagents=true`.
+3. Dispatch only after declaration is valid.
+4. Produce summary evidence for each required report:
+
+```bash
+uv run {{MUX_ROOT}}/tools/extract-summary.py <report-path> --evidence --evidence-path <summary-evidence-path>
+```
+
+5. Gate advancement with persisted evidence:
+
+```bash
+uv run {{MUX_ROOT}}/tools/verify.py <session-dir> --action gate --summary-evidence <summary-evidence-path>
+```
+
+6. Route strictly by gate result:
+   - `ADVANCE`: continue phase execution.
+   - missing prerequisites or missing report/signal/summary evidence must route to `BLOCK`.
+   - protocol-invalid declared dispatch payloads or inconsistent evidence must route to `RECOVER`.
+
+No manual advancement from chat output, summary-only inspection, or coordinator fallback outside this protocol.
 
 ## Phase execution pattern
 

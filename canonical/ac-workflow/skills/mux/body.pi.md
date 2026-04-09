@@ -5,7 +5,7 @@ Use this when the task is too large or too broad for one uninterrupted context w
 ## Purpose
 
 This pi adaptation keeps the important MUX behavior:
-- one coordinator owns the plan
+- one coordinator owns the wave plan
 - worker output lives in explicit report files
 - completion is tracked with explicit signal files
 - parallelism is allowed only when write scopes are disjoint
@@ -19,14 +19,23 @@ Use the shared mux foundation shipped with this package:
 ## Mandatory first actions
 
 1. Read `{{MUX_ROOT}}/protocol/foundation.md` and `{{MUX_ROOT}}/protocol/subagent.md` if they are not already in context.
-2. Start a session immediately:
+2. Start a strict session immediately:
 
 ```bash
-uv run {{MUX_ROOT}}/tools/session.py "<topic-slug>"
+uv run {{MUX_ROOT}}/tools/session.py --strict-runtime --session-key <key> "<topic-slug>"
 ```
 
 3. Treat the returned `SESSION_DIR=tmp/mux/...` path as project-local state.
 4. Create any additional session subdirectories you need before launching workers.
+
+## Strict control-plane vs data-plane contract
+
+- **Control-plane (coordinator-owned):** strict session/runtime state, prerequisite resolution, declared dispatch payloads, verification, and `ADVANCE | BLOCK | RECOVER` decisions.
+- **Data-plane (worker-owned):** bounded domain work plus written report/signal artifacts.
+- Advancement requires declared dispatch plus report/signal/summary evidence.
+- `BLOCK` handles missing prerequisites or missing report/signal/summary evidence.
+- `RECOVER` handles protocol-invalid declared dispatch or inconsistent evidence.
+- manual fallback outside this protocol is forbidden.
 
 ## pi runtime contract
 
@@ -48,6 +57,7 @@ That means you launch a worker wave, wait for the `subagent` call to return, the
 - Never let a worker launch another worker.
 - Prefer one fresh worker per wave or per review/fix retry.
 - Reuse the shared mux tools instead of inventing ad hoc session or signal helpers.
+- This skill stays wave-oriented; it does not own roadmap DAG resolution or phase selection logic.
 
 ## Worker contract
 
@@ -59,6 +69,32 @@ At minimum, every worker prompt must tell the worker to:
 - create a success or failure signal with `{{MUX_ROOT}}/tools/signal.py`
 - return exactly `0` on success
 - avoid nested `subagent` calls
+
+## Declared dispatch and evidence gates
+
+For every wave:
+
+1. Resolve prerequisites in the control-plane before dispatch.
+2. Declare dispatch with explicit worker scope and artifacts (`worker_type`, objective, scope, `report_path`, `signal_path`, expected `report|signal|summary` evidence, `no_nested_subagents=true`).
+3. Dispatch one worker or a disjoint-write parallel wave only after the declaration is valid.
+4. Produce summary evidence for each required report:
+
+```bash
+uv run {{MUX_ROOT}}/tools/extract-summary.py <report-path> --evidence --evidence-path <summary-evidence-path>
+```
+
+5. Gate advancement with persisted evidence:
+
+```bash
+uv run {{MUX_ROOT}}/tools/verify.py <session-dir> --action gate --summary-evidence <summary-evidence-path>
+```
+
+6. Route strictly by gate result:
+   - `ADVANCE`: continue to the next wave.
+   - missing prerequisites or missing report/signal/summary evidence must route to `BLOCK`.
+   - protocol-invalid declared dispatch payloads or inconsistent evidence must route to `RECOVER`.
+
+No summary-only advancement and no manual fallback outside this protocol.
 
 ## Recommended worker roles
 
@@ -124,25 +160,9 @@ If the same source file or shared asset root might change in more than one task,
 
 After each worker or worker wave:
 
-1. Check the signal state:
-
-```bash
-uv run {{MUX_ROOT}}/tools/verify.py <session-dir> --action summary
-```
-
-2. When you only need a completion count, you may use:
-
-```bash
-uv run {{MUX_ROOT}}/tools/check-signals.py <session-dir> --expected <N>
-```
-
-3. Prefer bounded report inspection through:
-
-```bash
-uv run {{MUX_ROOT}}/tools/extract-summary.py <report-path>
-```
-
-4. Route the next wave from the report's Executive Summary and Next Steps section.
+1. Gate advancement with `verify.py --action gate` using declared report/signal/summary evidence.
+2. Use `verify.py --action summary` and `check-signals.py --expected <N>` for observability only.
+3. Route the next wave from the report's Executive Summary and Next Steps section.
 
 ## User gates
 
@@ -160,10 +180,10 @@ When the user needs to notice you, use one short `say` message and keep the deta
 When the orchestration is done:
 - write or update the final deliverable and any persisted state
 - confirm the last worker wave is reflected in signals and reports
-- optionally deactivate the session marker:
+- optionally deactivate strict runtime artifacts:
 
 ```bash
-uv run {{MUX_ROOT}}/tools/deactivate.py
+uv run {{MUX_ROOT}}/tools/deactivate.py --session-key <key>
 ```
 
 The goal is not to imitate Claude-only hooks or task notifications. The goal is to preserve the useful MUX behavior honestly on top of the shared pi mux foundation.

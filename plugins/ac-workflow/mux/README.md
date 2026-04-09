@@ -39,7 +39,8 @@ This tree is the shared mux runtime substrate for canonical `ac-workflow` mux su
 ## Runtime boundary
 - Shared assets own protocol-state and gate-helper behavior.
 - The workflow package-local `strict-mux-runtime` extension consumes the strict activation artifacts plus the shared ledger to enforce fail-closed coordinator behavior for deliberately activated strict sessions.
-- Phase 004/005 now ship the runtime seam plus canonical strict `mux-ospec` consumption; later IT005 phases still own sibling `mux` / `mux-roadmap` strict alignment, transcript/checklist artifacts, and final release-surface closeout.
+- Phase 004/005/006 now ship the runtime seam plus strict control-plane consumption across `mux-ospec`, `mux`, and `mux-roadmap`.
+- Later IT005 phases still own transcript/checklist artifacts and final release-surface closeout.
 
 ## Current rendered root
 - `../../assets/mux`

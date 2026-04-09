@@ -63,13 +63,14 @@ The shared ledger enforces these transitions:
 - The contract requires declared dispatch `report_path` / `signal_path` to be project-root-relative.
 - Worker reports and summary-evidence artifacts should use project-root-relative paths so verification stays deterministic across sessions.
 
-## Shipped Phase 004+005 runtime boundary
+## Shipped Phase 004+005+006 runtime boundary
 - The package-local `strict-mux-runtime` extension consumes the strict activation artifacts plus this persisted ledger contract to enforce fail-closed coordinator behavior.
 - Strict Phase 004 dispatch supports one authoritative declared dispatch at a time; ambiguous `subagent.tasks` / `subagent.chain` launches remain out of scope and should fail closed under strict mode.
-- Strict Phase 004 coordinator mutation allowance stays narrow and orchestration-focused; Phase 005 now hardens `mux-ospec` as the canonical strict consumer.
+- Strict Phase 004 coordinator mutation allowance stays narrow and orchestration-focused; Phase 005 hardens `mux-ospec` as the canonical strict consumer.
+- Phase 006 aligns sibling `mux` / `mux-roadmap` surfaces to the strict control-plane contract: strict bootstrap (`session.py --strict-runtime --session-key <key>`), declared dispatch plus report/signal/summary evidence gating, `BLOCK` for missing prerequisites/evidence, `RECOVER` for invalid dispatch or inconsistent evidence, and no manual fallback outside protocol.
 
 ## Boundary for later phases
 - This foundation does not claim automatic task-notification support.
 - This foundation does not claim nested skill loading inside workers.
-- Phase 004/005 now ship the strict runtime seam plus canonical strict `mux-ospec` consumption; later phases still own sibling `mux` / `mux-roadmap` strict alignment, transcripts/checklists, and final release-surface alignment.
+- Phase 004/005/006 now ship the strict runtime seam plus canonical strict consumption across `mux-ospec`, `mux`, and `mux-roadmap`; later phases still own transcripts/checklists and final release-surface alignment.
 - Later phases should consume this asset root and protocol, not recreate local copies of the same helpers.

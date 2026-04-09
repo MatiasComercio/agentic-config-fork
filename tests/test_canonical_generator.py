@@ -94,6 +94,55 @@ def test_generator_keeps_mux_ospec_strict_markers_in_sync() -> None:
         assert forbidden not in generated_pi_skill
 
 
+def test_generator_keeps_mux_sibling_strict_markers_in_sync() -> None:
+    """Canonical and generated mux sibling surfaces should share strict control-plane markers."""
+    canonical_mux_body = (
+        PROJECT_ROOT / "canonical" / "ac-workflow" / "skills" / "mux" / "body.pi.md"
+    ).read_text()
+    generated_mux_skill = (
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-mux" / "SKILL.md"
+    ).read_text()
+    canonical_roadmap_body = (
+        PROJECT_ROOT / "canonical" / "ac-workflow" / "skills" / "mux-roadmap" / "body.pi.md"
+    ).read_text()
+    generated_roadmap_skill = (
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-mux-roadmap" / "SKILL.md"
+    ).read_text()
+
+    mux_markers = [
+        "--strict-runtime --session-key <key>",
+        "control-plane",
+        "data-plane",
+        "declared dispatch",
+        "report/signal/summary evidence",
+        "route to `BLOCK`",
+        "route to `RECOVER`",
+        "manual fallback outside this protocol is forbidden",
+        "This skill stays wave-oriented;",
+    ]
+    for marker in mux_markers:
+        assert marker in canonical_mux_body
+        assert marker in generated_mux_skill
+
+    roadmap_markers = [
+        "--strict-runtime --session-key <key>",
+        "Resolve the next unblocked phase from the roadmap's DAG",
+        "control-plane",
+        "data-plane",
+        "declared dispatch",
+        "report/signal/summary evidence",
+        "Summary-only inspection is not sufficient for roadmap or phase advancement.",
+        "Update the phase artifacts first.",
+        "Reconcile the roadmap mirror second.",
+        "route to `BLOCK`",
+        "route to `RECOVER`",
+        "manual fallback outside this protocol is forbidden",
+    ]
+    for marker in roadmap_markers:
+        assert marker in canonical_roadmap_body
+        assert marker in generated_roadmap_skill
+
+
 def test_generator_ships_worktree_and_gh_pr_review_on_shared_runtime() -> None:
     """`worktree` and `gh-pr-review` should now ship on the bounded shared runtime."""
     result = run_generator("--check", "--plugin", "ac-git", "--plugin", "ac-qa")
@@ -258,8 +307,9 @@ def test_mux_documentation_surfaces_match_current_generated_boundary() -> None:
     assert "package-local `strict-mux-runtime` extension" in workflow_readme
     assert "project-agnostic surface instead of relying on a user-global-only install" in workflow_readme
     assert "session.py --strict-runtime" in workflow_readme
-    assert "canonical strict `mux-ospec` consumption" in workflow_readme
-    assert "Strict sibling alignment for `ac-workflow-mux` and `ac-workflow-mux-roadmap` remains deferred" in workflow_readme
+    assert "canonical strict consumption across `mux-ospec`, `mux`, and `mux-roadmap`" in workflow_readme
+    assert "Transcript/checklist protocol artifacts and final release-surface closeout remain deferred" in workflow_readme
+    assert "Strict sibling alignment for `ac-workflow-mux` and `ac-workflow-mux-roadmap` remains deferred" not in workflow_readme
 
     hook_compat_readme = (PROJECT_ROOT / "packages" / "pi-compat" / "extensions" / "hook-compat" / "README.md").read_text()
     assert "Shared hook-adapter foundation" in hook_compat_readme
