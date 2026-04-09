@@ -57,8 +57,8 @@ uv run ../../assets/mux/tools/session.py --strict-runtime --session-key <key> "m
 ```
 
 2. Resolve and restate the target spec path.
-3. If the target does not exist yet, create the spec first using the repository's canonical spec location and then continue.
-4. Create or confirm the sibling stage directory:
+3. If the target does not exist yet, route immediately to `BLOCK`; tell the caller to create the spec first via the normal spec workflow, then re-invoke `mux-ospec` with that spec path.
+4. Create or confirm the sibling stage directory (only after the target exists):
 
 ```text
 <spec>.md

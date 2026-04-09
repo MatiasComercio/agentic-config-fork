@@ -318,6 +318,9 @@ def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
     assert "Resolved target spec path:" in mux_ospec_text
     assert "Stage 001 declaration plan:" in mux_ospec_text
     assert "route to `BLOCK`" in mux_ospec_text
+    assert "create the spec first via the normal spec workflow, then re-invoke `mux-ospec`" in mux_ospec_text
+    assert "create the spec first using the repository's canonical spec location and then continue" not in mux_ospec_text
+    assert "session.py \"mux-ospec-<topic>\"" not in mux_ospec_text
     assert "route to `RECOVER`" in mux_ospec_text
     assert "manual fallback outside this protocol is forbidden" in mux_ospec_text
 

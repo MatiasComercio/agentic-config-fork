@@ -77,12 +77,21 @@ def test_generator_keeps_mux_ospec_strict_markers_in_sync() -> None:
         "Resolved target spec path:",
         "Stage 001 declaration plan:",
         "route to `BLOCK`",
+        "create the spec first via the normal spec workflow, then re-invoke `mux-ospec`",
         "route to `RECOVER`",
         "manual fallback outside this protocol is forbidden",
     ]
     for marker in markers:
         assert marker in canonical_pi_body
         assert marker in generated_pi_skill
+
+    forbidden_markers = [
+        "create the spec first using the repository's canonical spec location and then continue",
+        'session.py "mux-ospec-<topic>"',
+    ]
+    for forbidden in forbidden_markers:
+        assert forbidden not in canonical_pi_body
+        assert forbidden not in generated_pi_skill
 
 
 def test_generator_ships_worktree_and_gh_pr_review_on_shared_runtime() -> None:
