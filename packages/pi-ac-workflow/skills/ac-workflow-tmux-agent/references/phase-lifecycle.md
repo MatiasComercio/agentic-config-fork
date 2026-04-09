@@ -8,7 +8,7 @@ For multi-phase work, prefer:
 
 1. write or update a short plan/status document
 2. spawn one agent for the current phase
-3. require a proper final completion report artifact
+3. require explicit terminal declaration (`closeout` for success, or explicit non-success)
 4. process the report
 5. clean up the finished agent promptly
 6. launch the next phase
@@ -19,7 +19,7 @@ This is usually better than keeping one broad worker alive across many different
 
 - default to **headless**
 - use `notificationMode: "notify-and-follow-up"` when phase chaining matters
-- treat `notificationMode: "notify-and-follow-up"` as the settled end-of-session handoff for the child, not as a stage-level or per-turn milestone
+- treat `notificationMode: "notify-and-follow-up"` as the settled end-of-session handoff for the child after explicit terminal declaration plus child exit, not as a stage-level or per-turn milestone
 - use `open_visual` only when the user explicitly wants live inspection or the running agent is worth monitoring
 - keep one clear mission per agent
 
@@ -33,8 +33,8 @@ Prompt ingredients:
 - keep scope narrow
 - run exact verification commands
 - do not commit or push unless explicitly requested
-- emit a final completion report artifact before stopping
-- do not emit the tmux-agent completion report early; make the tmux-agent report in the CORRECT moment, when it completes the ENTIRE phase work
+- emit `report_parent` with `reportKind: closeout` (plus bounded reportMarkdown when needed) before stopping
+- do not emit the tmux-agent closeout early; make the tmux-agent report in the CORRECT moment, when it completes the ENTIRE phase work
 
 Expected report shape:
 1. files changed
@@ -69,7 +69,7 @@ Prompt ingredients:
 - prefer QA/reporting only
 - do not change code unless a critical blocker prevents meaningful QA
 - save a QA artifact under a predictable output path
-- emit a final completion report artifact before stopping
+- emit `report_parent` with `reportKind: closeout` before stopping
 
 Expected report shape:
 1. routes/scenarios tested
@@ -90,25 +90,26 @@ When the user adds new requirements while an agent is already running:
 
 When a phase completes:
 
-1. read the settled completion artifact
+1. read the settled terminal artifact (`closeout`, `failure`, `blocker`, or exited `question`)
 2. if anything looks suspicious, verify with `status` and `capture`
-3. update the plan/status document
-4. if your workflow uses voice, announce only meaningful milestones such as phase completion or required input
-5. close visuals if desired
-6. kill the finished agent promptly
-7. launch the next phase
+3. if the child exited without valid terminal declaration, treat it as `protocol_violation` before proceeding
+4. update the plan/status document
+5. if your workflow uses voice, announce only meaningful milestones such as phase completion or required input
+6. close visuals if desired
+7. kill the finished agent promptly
+8. launch the next phase
 
-The parent should not proceed because of intermediate capture noise, a stage subagent result, or a partial completion artifact. Proceed only after the settled tmux completion/blocker/failure report has arrived and been verified.
+The parent should not proceed because of intermediate capture noise, a stage subagent result, or a partial artifact. Proceed only after settled tmux state is explicit and verified.
 
 ## Protocol violation handling
 
-If an agent appears done but failed to emit the required final report artifact, or emitted a completion report too early:
+If an agent appears done but failed to emit a valid terminal declaration (`closeout` or explicit non-success), or emitted `closeout` too early:
 
 1. inspect the real live state with `status` and `capture`
 2. capture enough terminal evidence to justify your decision
 3. document the protocol violation in the plan/status document
 4. only continue if the completion state is unambiguous or the human explicitly instructs you to proceed
-5. strengthen the next phase prompt with an explicit requirement not to stop without the final artifact and not to emit the tmux completion report before the ENTIRE phase work is complete
+5. strengthen the next phase prompt with an explicit requirement not to stop without valid terminal declaration and not to emit `closeout` before the ENTIRE phase work is complete
 
 ## Important anti-patterns
 

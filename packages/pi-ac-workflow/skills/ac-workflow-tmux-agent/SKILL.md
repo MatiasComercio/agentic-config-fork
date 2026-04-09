@@ -40,15 +40,16 @@ Prefer normal short-lived subagents when the work is brief and does not need its
 - Keep prompts focused. One agent, one mission.
 - For multi-phase work, prefer **one agent per phase** instead of a long-lived catch-all worker.
 - When chaining phases autonomously, prefer `notificationMode: "notify-and-follow-up"`.
-- Require a proper final completion report artifact before a phase agent stops.
 - Treat `notificationMode: "notify-and-follow-up"` as the child session's settled end-of-session handoff, not as a stage-level or per-turn milestone.
 - Preserve this exact timing rule in phase prompts when timing matters: `Make the tmux-agent report in the CORRECT moment: when it completes the ENTIRE phase work.`
-- Do not let a child stop on a stage subagent result or intermediate turn summary; the final tmux completion report should be emitted only when the child has completed the ENTIRE assigned phase/task work or is honestly stopping at a real blocker boundary.
+- Do not let a child stop on a stage subagent result or intermediate turn summary.
 - Use `send_message` for downward or lateral instructions rather than inventing unmanaged channels.
 - Use the built-in private launch bridge and bounded report flow for upward child-to-parent reporting.
-- Child completions are reported automatically after the child session stops; do not manually paste raw child transcripts back into the parent session.
-- If a child needs input before finishing, use `report_parent` with a bounded summary and `requiresResponse: true` when the parent must answer.
-- If a completion or failure artifact looks inconsistent, verify the real state with `status` and `capture` before acting.
+- Child success requires explicit `report_parent` with `reportKind: closeout`, then child exit; success is never inferred from quiet time, capture noise, or last-turn text.
+- `report_parent` kinds are `question | blocker | progress | failure | closeout`.
+- `progress` is non-terminal and non-follow-up by default; it should inform the parent, not settle the run.
+- If a child needs input before finishing, use `report_parent` with `reportKind: question` or `blocker`, a bounded summary, and `requiresResponse: true` when the parent must answer.
+- If a child exits without `closeout` or an explicit non-success terminal declaration, treat it as `protocol_violation` and verify with `status` and `capture` before acting.
 - Treat `close_visual` as best-effort; treat `kill` as the authoritative cleanup step.
 - After harvesting a finished agent's output, clean it up promptly instead of leaving it lingering.
 - When the user wants to stop everything using `tmux-agent`, inspect the managed set with `/tmux-agent tree` or `/tmux-agent list` and then kill the managed agents with `/tmux-agent kill`, usually children first and the root last.
@@ -127,7 +128,7 @@ Reports upward should be compressed and decision-oriented.
 - By default, launching a child creates a private temp bridge so the parent session can receive bounded completion summaries.
 - For phase-based work, keep a small plan/status document outside the child session and update it between phases.
 - For phase-based work, the usual sequence is: implementation -> verification/remediation -> browser QA.
-- For phase-based chaining, the parent should proceed only after the settled tmux completion/blocker/failure report has arrived and been verified.
+- For phase-based chaining, the parent should proceed only after settled tmux state is explicit and verified (`settled_completion`, `settled_failure`, `settled_blocked`, `settled_waiting_on_parent`, or `protocol_violation`).
 - If you combine tmux-agent with voice notifications, speak only for meaningful milestones such as phase completion or required input, and keep the spoken text short.
 - Peer communication defaults to isolated behavior. Open a debate channel explicitly before expecting peers to talk.
 - Debate modes are `alone`, `all`, `subset`, and `direct`.

@@ -40,6 +40,7 @@ The shared protocol reference for later prompt reuse is:
 - Create a success or failure signal before you finish.
 - Keep the final textual response exactly `0` on success.
 - Do not launch nested subagents from inside this protocol.
+- Do not call `tmux_agent` / `report_parent`; mux workers communicate through report/signal artifacts only.
 - Put routing guidance in the report executive summary so the parent coordinator can decide the next wave efficiently.
 
 ## Signal Command

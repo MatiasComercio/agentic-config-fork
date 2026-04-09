@@ -12,7 +12,6 @@ const EXTENSION_NAME = "tmux-agent";
 const DEFAULT_MODEL = "openai-codex/gpt-5.3-codex";
 const DEFAULT_CAPTURE_LINES = 80;
 const DEFAULT_REPORT_BYTES = 2048;
-const TERMINAL_COMPLETION_SETTLE_MS = 30_000;
 const SESSION_WINDOW = "agent";
 const REGISTRY_VERSION = 2;
 const BRIDGE_VERSION = 1;
@@ -58,8 +57,10 @@ type BridgeEventType =
 	| "exited"
 	| "shutdown_request"
 	| "closeout";
-type ReportParentKind = "question" | "blocker" | "progress" | "failure";
+type ReportParentKind = "question" | "blocker" | "progress" | "failure" | "closeout";
 type DebateEventType = "debate_message" | "debate_summary" | "debate_closed";
+type SettledTerminalState = "settled_completion" | "settled_failure" | "settled_blocked" | "settled_waiting_on_parent" | "protocol_violation";
+type BridgeSettlementState = "running" | SettledTerminalState;
 
 interface ManagedVisualRef {
 	kind: "iterm-session";
@@ -158,6 +159,9 @@ interface ResolvedStatus {
 	record: ManagedAgentRecord;
 	hasSession: boolean;
 	effectiveStatus: AgentStatus;
+	bridgeSettlementState?: BridgeSettlementState;
+	bridgeSettlementFinalizedAt?: string;
+	bridgeProtocolViolationReason?: string;
 }
 
 interface RunCommandOptions {
@@ -202,24 +206,13 @@ interface BridgeParentState {
 	deliveredEventIds: string[];
 	terminalEventId?: string;
 	terminalFinalizedAt?: string;
-	pendingTerminalEventId?: string;
-	pendingTerminalObservedAt?: string;
+	terminalState?: SettledTerminalState;
+	protocolViolationReason?: string;
 	updatedAt?: string;
-}
-
-interface BridgePendingTerminalSnapshot {
-	kind: "completion" | "failure";
-	assistantText: string;
-	summary: string;
-	markdown: string;
-	errorMessage?: string;
-	capturedAt: string;
 }
 
 interface BridgeChildState {
 	reportCount: number;
-	pendingTerminal?: BridgePendingTerminalSnapshot;
-	terminalEventId?: string;
 	updatedAt?: string;
 }
 
@@ -401,7 +394,7 @@ const TMUX_AGENT_PARAMS = Type.Object({
 	message: Type.Optional(Type.String({ description: "Message to send to another managed agent" })),
 	senderAgentId: Type.Optional(Type.String({ description: "Override sender agent ID when sending a message" })),
 	includeExited: Type.Optional(Type.Boolean({ description: "Include exited or terminated agents when listing" })),
-	reportKind: Type.Optional(StringEnum(["question", "blocker", "progress", "failure"] as const)),
+	reportKind: Type.Optional(StringEnum(["question", "blocker", "progress", "failure", "closeout"] as const)),
 	summary: Type.Optional(Type.String({ description: "Short structured summary for report_parent" })),
 	reportMarkdown: Type.Optional(Type.String({ description: "Optional markdown artifact body for report_parent" })),
 	requiresResponse: Type.Optional(Type.Boolean({ description: "Whether the parent should respond to the report_parent event" })),
@@ -1083,27 +1076,21 @@ function buildChildProtocol(launch: BridgeLaunchFile): string {
 		"- Work normally on the assigned task.",
 		"- If you are still working, keep working; do not treat a stage milestone or intermediate turn as final completion.",
 		"- Keep your final answer concise and decision-oriented.",
-		"- The extension will package your LAST final answer into a bounded markdown report for the parent only after this child session stops.",
 		"",
-		"Do not send the tmux-agent completion report early. Make the tmux-agent report in the CORRECT moment: when it completes the ENTIRE task.",
+		"Do not emit success implicitly. Success settles only after an explicit closeout declaration plus child exit.",
 		"",
-		"When you are ready to stop this child session after completing the ENTIRE task, prefer this final response shape:",
-		"## Summary",
-		"**Purpose**: one sentence",
-		"**Outcome**: one sentence",
-		"**Key Findings**:",
-		"- point 1",
-		"- point 2",
-		"- point 3",
-		"### Next Steps",
-		"- next step 1",
-		"- next step 2",
+		"When you are ready to stop this child session after completing the ENTIRE task:",
+		"1) Call tmux_agent report_parent with reportKind: closeout and a bounded summary (plus reportMarkdown when needed).",
+		"2) Then stop the session.",
 		"",
-		"If you need the parent to decide something BEFORE you stop, call the tmux_agent tool with:",
+		"If you need the parent to decide something BEFORE you stop, call tmux_agent with:",
 		"- action: report_parent",
-		"- reportKind: question | blocker | progress | failure",
+		"- reportKind: question | blocker | progress | failure | closeout",
 		"- summary: short bounded summary",
 		"- requiresResponse: true when the parent must answer",
+		"",
+		"Progress reports are non-terminal and non-follow-up by default.",
+		"Exiting without closeout or a declared non-success terminal report settles as protocol_violation.",
 		"",
 		"If you are explicitly asked to participate in a peer debate, use tmux_agent with:",
 		"- action: debate_send",
@@ -1495,103 +1482,86 @@ async function findDebateAcrossRoots(registry: RegistryFile, debateId: string): 
 	return undefined;
 }
 
-function getFinalAssistantMessage(messages: any[]): any | undefined {
-	for (let i = messages.length - 1; i >= 0; i -= 1) {
-		const message = messages[i];
-		if (message?.role === "assistant") return message;
+async function readBridgeEvents(bridgeDir: string): Promise<BridgeEvent[]> {
+	try {
+		const raw = await fs.readFile(getBridgeEventsPath(bridgeDir), "utf-8");
+		return raw
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter(Boolean)
+			.map((line) => JSON.parse(line) as BridgeEvent);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
 	}
-	return undefined;
 }
 
-function getAssistantText(message: any): string {
-	if (!message) return "";
-	const content = message.content;
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.filter((part) => part?.type === "text")
-		.map((part) => String(part.text ?? ""))
-		.join("\n")
-		.trim();
+function isTerminalDeclarationBridgeEvent(event: BridgeEvent): boolean {
+	return event.direction === "child_to_parent" && (event.type === "closeout" || event.type === "failure" || event.type === "blocker" || event.type === "question");
 }
 
-function splitBullets(text: string, maxItems: number): string[] {
-	const bulletLines = text
-		.split(/\r?\n/)
-		.map((line) => line.trim())
-		.filter((line) => /^[-*]\s+/.test(line))
-		.map((line) => line.replace(/^[-*]\s+/, "").trim())
-		.filter(Boolean);
-	if (bulletLines.length > 0) return bulletLines.slice(0, maxItems);
-	const sentences = text
-		.replace(/\r?\n+/g, " ")
-		.split(/(?<=[.!?])\s+/)
-		.map((sentence) => sentence.trim())
-		.filter(Boolean);
-	return sentences.slice(0, maxItems).map((sentence) => truncate(sentence, 160));
+function mapBridgeTerminalEventToSettledState(event: BridgeEvent): SettledTerminalState {
+	switch (event.type) {
+		case "closeout":
+			return "settled_completion";
+		case "failure":
+			return "settled_failure";
+		case "blocker":
+			return "settled_blocked";
+		case "question":
+			return "settled_waiting_on_parent";
+		default:
+			throw new Error(`Unsupported terminal bridge event type: ${event.type}`);
+	}
 }
 
-function extractNextSteps(text: string): string[] {
-	const lines = text.split(/\r?\n/);
-	const start = lines.findIndex((line) => /^#{2,3}\s+next steps/i.test(line.trim()) || /^next steps:?$/i.test(line.trim()));
-	if (start === -1) return [];
-	const results: string[] = [];
-	for (let i = start + 1; i < lines.length; i += 1) {
-		const line = lines[i].trim();
-		if (!line) continue;
-		if (/^#{1,6}\s+/.test(line)) break;
-		if (/^[-*]\s+/.test(line)) {
-			results.push(line.replace(/^[-*]\s+/, "").trim());
-			if (results.length >= 4) break;
+interface BridgeSettlementEvaluation {
+	settledState: BridgeSettlementState;
+	terminalEvent?: BridgeEvent;
+	protocolViolationReason?: string;
+}
+
+function evaluateBridgeSettlement(events: BridgeEvent[]): BridgeSettlementEvaluation {
+	const childExited = hasBridgeExitEvent(events);
+	if (!childExited) {
+		return { settledState: "running" };
+	}
+
+	const childReports = events.filter((event) => event.direction === "child_to_parent");
+	const closeoutEvents = childReports.filter((event) => event.type === "closeout");
+	if (closeoutEvents.length > 1) {
+		return {
+			settledState: "protocol_violation",
+			protocolViolationReason: "Multiple closeout declarations were emitted.",
+		};
+	}
+	if (closeoutEvents.length === 1) {
+		const closeoutEvent = closeoutEvents[0];
+		const closeoutIndex = childReports.findIndex((event) => event.eventId === closeoutEvent.eventId);
+		const postCloseoutEvent = closeoutIndex === -1 ? undefined : childReports.slice(closeoutIndex + 1)[0];
+		if (postCloseoutEvent) {
+			return {
+				settledState: "protocol_violation",
+				protocolViolationReason: `Post-closeout child report detected: ${postCloseoutEvent.type} (${postCloseoutEvent.eventId})`,
+			};
 		}
+		return {
+			settledState: "settled_completion",
+			terminalEvent: closeoutEvent,
+		};
 	}
-	return results;
-}
 
-function buildAutoReportMarkdown(params: {
-	launch: BridgeLaunchFile;
-	kind: "completion" | "failure";
-	assistantText: string;
-	errorMessage?: string;
-}): string {
-	const body = params.assistantText.trim() || (params.errorMessage ? `Error: ${params.errorMessage}` : "No assistant text returned.");
-	const findings = splitBullets(body, 5);
-	const nextSteps = extractNextSteps(body);
-	const purpose = params.launch.goal ?? params.launch.promptPreview;
-	const outcome =
-		params.kind === "failure"
-			? truncate(params.errorMessage ?? "The child turn failed or stopped unexpectedly.", 160)
-			: "Completed the requested child turn.";
-	const next = nextSteps.length > 0 ? nextSteps : ["Review the details and decide whether follow-up instructions are needed."];
-	const artifacts = [path.join(params.launch.bridgeDir, "child")];
-
-	return [
-		`# ${params.launch.role ? `${params.launch.role} report` : "tmux-agent report"}`,
-		"",
-		"## Table of Contents",
-		"- [Executive Summary](#executive-summary)",
-		"- [Details](#details)",
-		"- [Artifacts](#artifacts)",
-		"",
-		"## Executive Summary",
-		"",
-		`**Purpose**: ${purpose}`,
-		`**Outcome**: ${outcome}`,
-		"**Key Findings**:",
-		...(findings.length > 0 ? findings.map((item) => `- ${item}`) : ["- No key findings recorded."]),
-		"",
-		"### Next Steps",
-		...next.map((item) => `- ${item}`),
-		"",
-		"---",
-		"",
-		"## Details",
-		"",
-		body,
-		"",
-		"## Artifacts",
-		...artifacts.map((item) => `- ${item}`),
-	].join("\n");
+	const declaredNonSuccessEvent = [...childReports].reverse().find((event) => isTerminalDeclarationBridgeEvent(event));
+	if (!declaredNonSuccessEvent) {
+		return {
+			settledState: "protocol_violation",
+			protocolViolationReason: "Child exited without a valid terminal declaration.",
+		};
+	}
+	return {
+		settledState: mapBridgeTerminalEventToSettledState(declaredNonSuccessEvent),
+		terminalEvent: declaredNonSuccessEvent,
+	};
 }
 
 async function writeBridgeReport(bridgeDir: string, baseName: string, markdown: string): Promise<{ reportPath: string; reportNumber: number }> {
@@ -1600,65 +1570,6 @@ async function writeBridgeReport(bridgeDir: string, baseName: string, markdown: 
 	const reportPath = path.join(bridgeDir, "child", reportFile);
 	await writeTextFileAtomic(reportPath, `${markdown.trim()}\n`);
 	return { reportPath, reportNumber };
-}
-
-async function writeBridgeLatestTerminalReport(bridgeDir: string, kind: "completion" | "failure", markdown: string): Promise<string> {
-	const reportPath = path.join(bridgeDir, "child", `latest-${kind}.md`);
-	await writeTextFileAtomic(reportPath, `${markdown.trim()}\n`);
-	return reportPath;
-}
-
-async function persistPendingTerminalSnapshot(bridgeDir: string, snapshot: BridgePendingTerminalSnapshot): Promise<void> {
-	const state = await readBridgeChildState(bridgeDir);
-	state.pendingTerminal = snapshot;
-	await writeBridgeChildState(bridgeDir, state);
-}
-
-async function flushPendingTerminalReport(params: { bridgeDir: string; launch: BridgeLaunchFile; agentId: string }): Promise<{ bridgeEvent: BridgeEvent; reportPath: string; signalPath: string } | undefined> {
-	const state = await readBridgeChildState(params.bridgeDir);
-	if (state.terminalEventId) return undefined;
-
-	const fallbackError = "No final assistant turn captured before child session shutdown.";
-	const snapshot =
-		state.pendingTerminal ??
-		({
-			kind: "failure",
-			assistantText: "",
-			summary: truncate(fallbackError, 240),
-			markdown: buildAutoReportMarkdown({
-				launch: params.launch,
-				kind: "failure",
-				assistantText: "",
-				errorMessage: fallbackError,
-			}),
-			errorMessage: fallbackError,
-			capturedAt: nowIso(),
-		} satisfies BridgePendingTerminalSnapshot);
-
-	const reportPath = await writeBridgeLatestTerminalReport(params.bridgeDir, snapshot.kind, snapshot.markdown);
-	const bridgeEvent = await appendBridgeEvent(params.bridgeDir, {
-		launchId: params.launch.launchId,
-		direction: "child_to_parent",
-		type: snapshot.kind,
-		from: { agentId: params.agentId, sessionName: params.launch.sessionName },
-		summary: truncate(snapshot.summary || snapshot.errorMessage || `${snapshot.kind} reported by ${params.agentId}`, 240),
-		reportPath,
-	});
-	const signalPath = await writeBridgeEventSignal(params.bridgeDir, bridgeEvent, snapshot.kind === "completion");
-	state.pendingTerminal = undefined;
-	state.terminalEventId = bridgeEvent.eventId;
-	await writeBridgeChildState(params.bridgeDir, state);
-	await appendAuditLog({
-		timestamp: nowIso(),
-		event: "child_terminal_report",
-		launchId: params.launch.launchId,
-		bridgeDir: params.bridgeDir,
-		agentId: params.agentId,
-		kind: snapshot.kind,
-		reportPath,
-		signalPath,
-	});
-	return { bridgeEvent, reportPath, signalPath };
 }
 
 function extractHeaders(content: string): string[] {
@@ -1796,7 +1707,33 @@ async function resolveStatuses(registry: RegistryFile): Promise<ResolvedStatus[]
 		let effectiveStatus = record.status;
 		if (record.status === "terminated") effectiveStatus = "terminated";
 		else if (!hasSession) effectiveStatus = "missing";
-		results.push({ record, hasSession, effectiveStatus });
+
+		let bridgeSettlementState: BridgeSettlementState | undefined;
+		let bridgeSettlementFinalizedAt: string | undefined;
+		let bridgeProtocolViolationReason: string | undefined;
+		if (record.bridgeDir) {
+			const [parentState, events] = await Promise.all([
+				readBridgeParentState(record.bridgeDir).catch(() => undefined),
+				readBridgeEvents(record.bridgeDir).catch(() => []),
+			]);
+			const evaluated = evaluateBridgeSettlement(events);
+			if (evaluated.settledState !== "running") {
+				bridgeSettlementState = evaluated.settledState;
+				bridgeProtocolViolationReason = evaluated.protocolViolationReason;
+			}
+			bridgeSettlementState ??= parentState?.terminalState;
+			bridgeSettlementFinalizedAt = parentState?.terminalFinalizedAt;
+			bridgeProtocolViolationReason ??= parentState?.protocolViolationReason;
+		}
+
+		results.push({
+			record,
+			hasSession,
+			effectiveStatus,
+			bridgeSettlementState,
+			bridgeSettlementFinalizedAt,
+			bridgeProtocolViolationReason,
+		});
 	}
 	return results;
 }
@@ -1805,6 +1742,7 @@ function formatAgentSummary(status: ResolvedStatus): string {
 	const parts = [
 		status.record.agentId,
 		`[${status.effectiveStatus}]`,
+		status.bridgeSettlementState ? `settled=${status.bridgeSettlementState}` : undefined,
 		status.record.role ? `role=${status.record.role}` : undefined,
 		status.record.goal ? `goal=${truncate(status.record.goal, 60)}` : undefined,
 		status.record.model,
@@ -1817,6 +1755,9 @@ function formatAgentDetails(status: ResolvedStatus): string[] {
 		`agentId: ${status.record.agentId}`,
 		`sessionName: ${status.record.sessionName}`,
 		`status: ${status.effectiveStatus}`,
+		`bridgeSettlementState: ${status.bridgeSettlementState ?? "running"}`,
+		status.bridgeSettlementFinalizedAt ? `bridgeSettlementFinalizedAt: ${status.bridgeSettlementFinalizedAt}` : undefined,
+		status.bridgeProtocolViolationReason ? `bridgeProtocolViolationReason: ${status.bridgeProtocolViolationReason}` : undefined,
 		`cwd: ${status.record.cwd}`,
 		`model: ${status.record.model}`,
 		status.record.role ? `role: ${status.record.role}` : undefined,
@@ -2233,13 +2174,15 @@ async function reportParent(request: ReportParentRequest): Promise<{ bridgeDir: 
 		const report = await writeBridgeReport(currentEnv.bridgeDir, request.kind, request.reportMarkdown);
 		reportPath = report.reportPath;
 	}
+	const defaultRequiresResponse = request.kind === "question" || request.kind === "blocker";
+	const requiresResponse = request.kind === "closeout" ? false : request.requiresResponse ?? defaultRequiresResponse;
 	const event = await appendBridgeEvent(currentEnv.bridgeDir, {
 		launchId: currentEnv.launchId,
 		direction: "child_to_parent",
 		type: request.kind,
 		from: { agentId: currentEnv.agentId, sessionName: launch.sessionName },
 		summary: truncate(request.summary, 240),
-		requiresResponse: request.requiresResponse ?? request.kind !== "progress",
+		requiresResponse,
 		reportPath,
 	});
 	const signalPath = await writeBridgeEventSignal(currentEnv.bridgeDir, event, request.kind !== "failure");
@@ -2644,33 +2587,24 @@ function getSessionBridgeEntries(ctx: ExtensionContext): SessionBridgeEntry[] {
 	return results;
 }
 
-function isTerminalBridgeEvent(event: BridgeEvent): boolean {
-	return event.direction === "child_to_parent" && (event.type === "completion" || event.type === "failure");
-}
-
-function getLatestTerminalBridgeEvent(events: BridgeEvent[]): BridgeEvent | undefined {
-	for (let i = events.length - 1; i >= 0; i -= 1) {
-		if (isTerminalBridgeEvent(events[i])) return events[i];
-	}
-	return undefined;
-}
-
-function getLastBridgeActivityTimestamp(events: BridgeEvent[]): number | undefined {
-	for (let i = events.length - 1; i >= 0; i -= 1) {
-		const timestamp = Date.parse(events[i].timestamp);
-		if (!Number.isNaN(timestamp)) return timestamp;
-	}
-	return undefined;
-}
-
 function hasBridgeExitEvent(events: BridgeEvent[]): boolean {
 	return events.some((event) => event.direction === "system" && event.type === "exited");
 }
 
 function shouldTriggerTurnForEvent(event: BridgeEvent, launch: BridgeLaunchFile): boolean {
 	if (launch.notificationMode === "silent") return false;
+	if (event.type === "closeout") return false;
+	if (event.type === "progress") return Boolean(event.requiresResponse);
 	if (event.type === "question" || event.type === "blocker") return true;
+	if (event.type === "failure") return true;
+	if (event.requiresResponse) return true;
 	return launch.notificationMode === "notify-and-follow-up";
+}
+
+function shouldTriggerTurnForSettledState(state: SettledTerminalState, launch: BridgeLaunchFile): boolean {
+	if (launch.notificationMode === "silent") return false;
+	if (state === "settled_completion") return launch.notificationMode === "notify-and-follow-up";
+	return true;
 }
 
 async function buildParentDeliveryContent(
@@ -2679,23 +2613,27 @@ async function buildParentDeliveryContent(
 	options?: {
 		terminalEventId?: string;
 		finalizedAt?: string;
+		settledState?: SettledTerminalState;
+		settlementReason?: string;
 	},
 ): Promise<string> {
 	const header = `[tmux-agent ${event.type}] ${launch.agentId}`;
-	const terminalMetadata = options?.terminalEventId || options?.finalizedAt
+	const settlementMetadata = options?.terminalEventId || options?.finalizedAt || options?.settledState || options?.settlementReason
 		? [
-			"## Completion Metadata",
+			"## Settlement Metadata",
+			options?.settledState ? `- Settled State: ${options.settledState}` : undefined,
 			options?.terminalEventId ? `- Terminal Event ID: ${options.terminalEventId}` : undefined,
 			options?.finalizedAt ? `- Finalized At: ${options.finalizedAt}` : undefined,
+			options?.settlementReason ? `- Reason: ${options.settlementReason}` : undefined,
 			"",
 		].filter((line): line is string => Boolean(line))
 		: [];
 	if (event.reportPath) {
 		try {
 			const summary = await readBoundedReportSummary(event.reportPath);
-			return [header, "", `Goal: ${launch.goal ?? launch.promptPreview}`, "", ...terminalMetadata, summary].join("\n");
+			return [header, "", `Goal: ${launch.goal ?? launch.promptPreview}`, "", ...settlementMetadata, summary].join("\n");
 		} catch {
-			return [header, "", `Goal: ${launch.goal ?? launch.promptPreview}`, ...terminalMetadata, `Summary: ${event.summary ?? "Report unavailable."}`]
+			return [header, "", `Goal: ${launch.goal ?? launch.promptPreview}`, ...settlementMetadata, `Summary: ${event.summary ?? "Report unavailable."}`]
 				.filter(Boolean)
 				.join("\n");
 		}
@@ -2704,10 +2642,23 @@ async function buildParentDeliveryContent(
 		header,
 		"",
 		`Goal: ${launch.goal ?? launch.promptPreview}`,
-		...terminalMetadata,
+		...settlementMetadata,
 		event.summary ? `Summary: ${event.summary}` : "",
 		event.message ? `Message: ${event.message}` : "",
 	].filter(Boolean).join("\n");
+}
+
+function buildProtocolViolationDeliveryContent(launch: BridgeLaunchFile, finalizedAt: string, reason: string): string {
+	return [
+		`[tmux-agent protocol_violation] ${launch.agentId}`,
+		"",
+		`Goal: ${launch.goal ?? launch.promptPreview}`,
+		"",
+		"## Settlement Metadata",
+		"- Settled State: protocol_violation",
+		`- Finalized At: ${finalizedAt}`,
+		`- Reason: ${reason}`,
+	].join("\n");
 }
 
 async function buildDebateDeliveryContent(event: DebateEvent, debate: DebateFile): Promise<string> {
@@ -2744,25 +2695,8 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 	const bridgeWatchers = new Map<string, FSWatcher>();
 	const debateWatchers = new Map<string, FSWatcher>();
 	const rootWatchers = new Map<string, FSWatcher>();
-	const bridgeCompletionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	const processingBridges = new Set<string>();
 	const processingDebates = new Set<string>();
-
-	const clearBridgeCompletionTimer = (bridgeDir: string) => {
-		const timer = bridgeCompletionTimers.get(bridgeDir);
-		if (!timer) return;
-		clearTimeout(timer);
-		bridgeCompletionTimers.delete(bridgeDir);
-	};
-
-	const scheduleBridgeCompletionReconcile = (bridgeDir: string, sessionKey: string, delayMs: number) => {
-		clearBridgeCompletionTimer(bridgeDir);
-		const timer = setTimeout(() => {
-			bridgeCompletionTimers.delete(bridgeDir);
-			void processBridgeDeliveries(bridgeDir, sessionKey);
-		}, Math.max(250, delayMs));
-		bridgeCompletionTimers.set(bridgeDir, timer);
-	};
 
 	const subscribeBridge = async (bridgeDir: string, sessionKey: string) => {
 		if (bridgeWatchers.has(bridgeDir)) return;
@@ -2778,7 +2712,6 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 			if (desired.has(bridgeDir)) continue;
 			watcher.close();
 			bridgeWatchers.delete(bridgeDir);
-			clearBridgeCompletionTimer(bridgeDir);
 		}
 	};
 
@@ -2791,77 +2724,11 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 			const parentState = await readBridgeParentState(bridgeDir);
 			const delivered = new Set(parentState.deliveredEventIds);
 			let changed = false;
-			let events: BridgeEvent[] = [];
-			try {
-				const raw = await fs.readFile(getBridgeEventsPath(bridgeDir), "utf-8");
-				events = raw
-					.split(/\r?\n/)
-					.map((line) => line.trim())
-					.filter(Boolean)
-					.map((line) => JSON.parse(line) as BridgeEvent);
-			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-			}
-
-			const latestTerminalEvent = getLatestTerminalBridgeEvent(events);
-			const lastBridgeActivityAt = getLastBridgeActivityTimestamp(events);
-			const childExited = hasBridgeExitEvent(events);
-			const quietForMs = lastBridgeActivityAt ? Date.now() - lastBridgeActivityAt : undefined;
-			const shouldFinalizeLatestTerminal = Boolean(latestTerminalEvent) && (childExited || (quietForMs !== undefined && quietForMs >= TERMINAL_COMPLETION_SETTLE_MS));
-			if (!latestTerminalEvent || shouldFinalizeLatestTerminal || parentState.terminalEventId) {
-				clearBridgeCompletionTimer(bridgeDir);
-			}
+			const events = await readBridgeEvents(bridgeDir);
 
 			for (const event of events) {
 				if (delivered.has(event.eventId)) continue;
 				if (event.direction !== "child_to_parent") {
-					delivered.add(event.eventId);
-					changed = true;
-					continue;
-				}
-
-				if (isTerminalBridgeEvent(event)) {
-					if (parentState.terminalEventId) {
-						delivered.add(event.eventId);
-						changed = true;
-						continue;
-					}
-					if (!latestTerminalEvent || event.eventId !== latestTerminalEvent.eventId) {
-						delivered.add(event.eventId);
-						changed = true;
-						continue;
-					}
-					if (!shouldFinalizeLatestTerminal) {
-						parentState.pendingTerminalEventId = event.eventId;
-						parentState.pendingTerminalObservedAt = event.timestamp;
-						changed = true;
-						if (quietForMs !== undefined) {
-							scheduleBridgeCompletionReconcile(bridgeDir, sessionKey, TERMINAL_COMPLETION_SETTLE_MS - quietForMs);
-						}
-						continue;
-					}
-					const finalizedAt = nowIso();
-					const content = await buildParentDeliveryContent(event, launch, {
-						terminalEventId: event.eventId,
-						finalizedAt,
-					});
-					if (launch.notificationMode !== "silent") {
-						pi.sendMessage(
-							{
-								customType: "tmux-agent-report",
-								content,
-								display: true,
-								details: { launch, event, terminalEventId: event.eventId, finalizedAt },
-							},
-							shouldTriggerTurnForEvent(event, launch)
-								? { triggerTurn: true, deliverAs: "followUp" }
-								: { triggerTurn: false },
-						);
-					}
-					parentState.terminalEventId = event.eventId;
-					parentState.terminalFinalizedAt = finalizedAt;
-					parentState.pendingTerminalEventId = undefined;
-					parentState.pendingTerminalObservedAt = undefined;
 					delivered.add(event.eventId);
 					changed = true;
 					continue;
@@ -2882,6 +2749,50 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 					);
 				}
 				delivered.add(event.eventId);
+				changed = true;
+			}
+
+			const settlement = evaluateBridgeSettlement(events);
+			const alreadyFinalized =
+				Boolean(parentState.terminalFinalizedAt) &&
+				parentState.terminalState === settlement.settledState &&
+				parentState.terminalEventId === settlement.terminalEvent?.eventId &&
+				parentState.protocolViolationReason === settlement.protocolViolationReason;
+			if (settlement.settledState !== "running" && !alreadyFinalized) {
+				const finalizedAt = nowIso();
+				const details: Record<string, unknown> = { launch, settlement, finalizedAt };
+				let content: string;
+				if (settlement.terminalEvent) {
+					content = await buildParentDeliveryContent(settlement.terminalEvent, launch, {
+						terminalEventId: settlement.terminalEvent.eventId,
+						finalizedAt,
+						settledState: settlement.settledState,
+						settlementReason: settlement.protocolViolationReason,
+					});
+					details.event = settlement.terminalEvent;
+					details.terminalEventId = settlement.terminalEvent.eventId;
+				} else {
+					const reason = settlement.protocolViolationReason ?? "Child exited without a valid terminal declaration.";
+					content = buildProtocolViolationDeliveryContent(launch, finalizedAt, reason);
+					details.protocolViolationReason = reason;
+				}
+				if (launch.notificationMode !== "silent") {
+					pi.sendMessage(
+						{
+							customType: "tmux-agent-report",
+							content,
+							display: true,
+							details,
+						},
+						shouldTriggerTurnForSettledState(settlement.settledState, launch)
+							? { triggerTurn: true, deliverAs: "followUp" }
+							: { triggerTurn: false },
+					);
+				}
+				parentState.terminalState = settlement.settledState;
+				parentState.terminalEventId = settlement.terminalEvent?.eventId;
+				parentState.terminalFinalizedAt = finalizedAt;
+				parentState.protocolViolationReason = settlement.protocolViolationReason;
 				changed = true;
 			}
 
@@ -3266,34 +3177,6 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 		};
 	});
 
-	pi.on("agent_end", async (event, _ctx) => {
-		const currentEnv = getCurrentAgentEnv();
-		if (!currentEnv.bridgeDir || !currentEnv.launchId || !currentEnv.agentId) return;
-		const launch = await readBridgeLaunch(currentEnv.bridgeDir);
-		const finalAssistant = getFinalAssistantMessage(event.messages as any[]);
-		const assistantText = getAssistantText(finalAssistant);
-		const stopReason = finalAssistant?.stopReason as string | undefined;
-		const errorMessage = typeof finalAssistant?.errorMessage === "string" ? finalAssistant.errorMessage : undefined;
-		const kind: "completion" | "failure" = stopReason === "error" || stopReason === "aborted" ? "failure" : "completion";
-		const markdown = buildAutoReportMarkdown({ launch, kind, assistantText, errorMessage });
-		await persistPendingTerminalSnapshot(currentEnv.bridgeDir, {
-			kind,
-			assistantText,
-			summary: truncate(assistantText || errorMessage || `${kind} reported by ${currentEnv.agentId}`, 240),
-			markdown,
-			errorMessage,
-			capturedAt: nowIso(),
-		});
-		await appendAuditLog({
-			timestamp: nowIso(),
-			event: "child_turn_snapshot",
-			launchId: currentEnv.launchId,
-			bridgeDir: currentEnv.bridgeDir,
-			agentId: currentEnv.agentId,
-			kind,
-		});
-	});
-
 	pi.on("session_shutdown", async (_event, _ctx) => {
 		const currentEnv = getCurrentAgentEnv();
 		if (currentEnv.agentId) {
@@ -3322,20 +3205,13 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 				status: "success",
 				created_at: eventRecord.timestamp,
 			});
-			await flushPendingTerminalReport({
-				bridgeDir: currentEnv.bridgeDir,
-				launch,
-				agentId: currentEnv.agentId,
-			});
 		}
 		for (const watcher of bridgeWatchers.values()) watcher.close();
 		for (const watcher of debateWatchers.values()) watcher.close();
 		for (const watcher of rootWatchers.values()) watcher.close();
-		for (const timer of bridgeCompletionTimers.values()) clearTimeout(timer);
 		bridgeWatchers.clear();
 		debateWatchers.clear();
 		rootWatchers.clear();
-		bridgeCompletionTimers.clear();
 	});
 
 	pi.registerCommand("tmux-agent", {
@@ -3370,7 +3246,7 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 			"When opening a visual, open a background tab in the current iTerm window without stealing focus when possible.",
 			"For spawn, only set advanced fields like role, agentId, parentAgentId, rootAgentId, notificationMode, and contextBrief when the task really needs them; otherwise rely on defaults.",
 			"When building hierarchies, set role, parentAgentId, and rootAgentId deliberately so the org tree stays understandable.",
-			"Use report_parent from a child session only for blocker/question/progress/failure escalation. Normal completion is reported automatically.",
+			"Use report_parent from a child session for blocker/question/progress/failure updates, and emit exactly one closeout when the task is complete. Success settles only after closeout plus child exit.",
 			"Use debate_start, debate_send, and debate_close only for explicit peer collaboration. Default peer behavior should remain isolated unless the user asks for cross-peer discussion.",
 		],
 		parameters: TMUX_AGENT_PARAMS,
@@ -3412,18 +3288,24 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 						const lines = statuses.map(formatAgentSummary);
 						return buildToolResult(lines.join("\n") || "No managed agents recorded.", {
 							action: params.action,
-							agents: statuses.map((status) => ({ ...status.record, effectiveStatus: status.effectiveStatus })),
+							agents: statuses.map((status) => ({
+								...status.record,
+								effectiveStatus: status.effectiveStatus,
+								bridgeSettlementState: status.bridgeSettlementState,
+								bridgeSettlementFinalizedAt: status.bridgeSettlementFinalizedAt,
+								bridgeProtocolViolationReason: status.bridgeProtocolViolationReason,
+							})),
 						});
 					}
 					case "status": {
 						const result = await statusManagedAgent(params.target, params.lines ?? 40);
 						const lines = formatAgentDetails(result.status);
 						if (result.capture) lines.push("", "capture:", ...result.capture.trimEnd().split(/\r?\n/).slice(-20));
-						return buildToolResult(lines.join("\n"), { action: params.action, agent: result.status.record, capture: result.capture });
+						return buildToolResult(lines.join("\n"), { action: params.action, status: result.status, capture: result.capture });
 					}
 					case "capture": {
 						const result = await captureManagedAgent(params.target, params.lines ?? DEFAULT_CAPTURE_LINES);
-						return buildToolResult(result.capture, { action: params.action, agent: result.status.record, lines: params.lines ?? DEFAULT_CAPTURE_LINES });
+						return buildToolResult(result.capture, { action: params.action, status: result.status, lines: params.lines ?? DEFAULT_CAPTURE_LINES });
 					}
 					case "send_message": {
 						if (!params.target?.trim()) throw new Error("send_message requires target");

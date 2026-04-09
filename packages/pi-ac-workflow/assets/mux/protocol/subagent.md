@@ -7,6 +7,7 @@ This file is the authoritative worker contract for the pi-adapted mux family.
 - Create a success or failure signal with `../../assets/mux/tools/signal.py` before returning.
 - Keep the final textual response exactly `0` on success.
 - Do not launch nested subagents from inside a mux worker.
+- Do not call `tmux_agent` / `report_parent` from mux workers; worker-to-coordinator communication is report/signal artifacts only.
 - Put routing guidance in the report executive summary so the parent coordinator can decide the next wave without rereading the entire artifact.
 
 ## Required report shape

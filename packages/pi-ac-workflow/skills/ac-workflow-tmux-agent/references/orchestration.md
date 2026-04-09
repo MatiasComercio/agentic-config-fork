@@ -60,6 +60,14 @@ Upward reports should usually contain:
 3. blockers
 4. next recommendation
 
+### Terminal settlement rules
+
+- Success requires explicit `report_parent` with `reportKind: closeout`, then child exit.
+- Explicit non-success terminal declarations are `failure`, `blocker`, and exited `question`.
+- `progress` is non-terminal and non-follow-up by default.
+- Exit without valid terminal declaration settles as `protocol_violation`.
+- Supervisors should verify settled state with `status` before phase chaining.
+
 ## Spawn rules
 
 - Chiefs of Staff may spawn heads and a few specialist peers.
@@ -84,7 +92,7 @@ Why this works:
 For autonomous chaining, prefer:
 - a small plan/status document outside the child session
 - `notificationMode: "notify-and-follow-up"`
-- explicit final completion report artifacts
+- explicit terminal declarations (`closeout` or declared non-success) plus child exit
 - prompt cleanup that kills each phase agent after its output is harvested
 
 ## Anti-patterns
@@ -96,8 +104,9 @@ Avoid:
 - frequent noisy status spam
 - using more agents to compensate for poor prompts
 - combining implementation, remediation, and QA in one large agent when correctness matters
-- trusting one completion or failure artifact without checking live session state
-- letting an agent stop without a proper final completion report artifact
+- trusting one completion or failure artifact without checking settled bridge state
+- inferring success from quiet sessions, observer capture, or last-turn text
+- letting an agent stop without explicit `closeout` or a declared non-success terminal path
 - leaving finished phase agents alive after their output has already been harvested
 
 ## Peer debates

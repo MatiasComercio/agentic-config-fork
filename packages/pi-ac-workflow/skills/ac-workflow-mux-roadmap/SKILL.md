@@ -78,6 +78,7 @@ Do not invent a separate `CONTINUE.md` by default when the roadmap already has a
 - You are the only roadmap coordinator.
 - Do not introduce track coordinators or nested roadmap coordinators.
 - Do not delegate “run this whole roadmap” or “run this whole phase” to another coordinator.
+- Only the child roadmap coordinator may communicate upward to a parent tmux hierarchy; stage workers communicate through report/signal artifacts only.
 - Use fresh workers for bounded stage tasks, not for hidden orchestration layers.
 - Keep shared surfaces serialized even when the DAG allows parallel tracks.
 
@@ -156,6 +157,7 @@ Every worker must follow `../../assets/mux/protocol/subagent.md`:
 - write a signal
 - return exactly `0` on success
 - avoid nested subagents
+- avoid `tmux_agent` / `report_parent` from workers
 
 ## Update protocol
 

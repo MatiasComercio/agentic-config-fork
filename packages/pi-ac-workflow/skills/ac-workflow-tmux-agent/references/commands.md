@@ -34,10 +34,10 @@ By default, spawn:
 - keeps the agent headless unless live viewing is clearly requested
 - auto-links parent/root IDs when already inside a tmux-agent hierarchy
 - creates a private temp bridge for bounded child-to-parent reporting
-- notifies the launching session when the child completes
+- notifies the launching session when the child reaches an explicit settled terminal state
 
 When autonomous follow-up matters, prefer `notificationMode: "notify-and-follow-up"` over plain notify.
-Treat `notificationMode: "notify-and-follow-up"` as the child's settled end-of-session handoff after the child stops with a proper final report artifact, not as a stage-level or per-turn milestone.
+Treat `notificationMode: "notify-and-follow-up"` as the child's settled end-of-session handoff after explicit terminal declaration plus child exit, not as a stage-level or per-turn milestone.
 
 ### Watch-live spawn example
 
@@ -113,10 +113,12 @@ When using `send_message`:
 
 When using `report_parent` from a child session:
 
-- set `reportKind` to `question`, `blocker`, `progress`, or `failure`
+- set `reportKind` to `question`, `blocker`, `progress`, `failure`, or `closeout`
+- use `closeout` exactly once when the task is complete; success settles only after child exit
 - set a concise bounded `summary`
 - optionally include `reportMarkdown` when the parent needs a small artifact
-- set `requiresResponse: true` when the parent must answer before the child can continue
+- set `requiresResponse: true` for `question`/`blocker` when the parent must answer before the child can continue
+- keep `progress` non-terminal and non-follow-up by default
 
 When using `debate_start`:
 
@@ -151,12 +153,12 @@ When using `peer_mode_set`:
 Use:
 
 - `list` to see all managed agents
-- `status` for one agent plus a short capture preview
+- `status` for one agent plus a short capture preview and bridge settlement state (`running`, `settled_completion`, `settled_failure`, `settled_blocked`, `settled_waiting_on_parent`, `protocol_violation`)
 - `capture` for a larger pane snapshot
 - `tree` to inspect hierarchy
 - `peer_list` to inspect peer modes under one root
 
-If a completion or failure artifact looks suspicious, compare it against `status` and `capture` before deciding to kill, relaunch, or report failure.
+If a completion or failure artifact looks suspicious, compare it against `status` and `capture` before deciding to kill, relaunch, or report failure. Quiet panes and observer noise are non-authoritative compared with settled bridge state.
 
 ## Cleanup guidance
 
@@ -170,12 +172,13 @@ When the user says to kill them all using `tmux-agent`:
 
 For phase-based workflows, the usual completion flow is:
 
-1. read the completion artifact
-2. verify with `status` / `capture` if needed
-3. update any plan or status document
-4. close visuals if desired
-5. kill the agent promptly
-6. launch the next phase
+1. read the terminal artifact (closeout/failure/blocker/question)
+2. verify settled state with `status` / `capture` if needed
+3. treat undeclared exits as `protocol_violation` and decide recovery before relaunch
+4. update any plan or status document
+5. close visuals if desired
+6. kill the agent promptly
+7. launch the next phase
 
 Example cleanup flow:
 

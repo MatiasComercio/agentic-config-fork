@@ -152,6 +152,7 @@ Those files are the source of truth for stage semantics. This skill owns the orc
 ## Worker policy
 
 Use only one worker layer: coordinator -> subagent.
+Only the child coordinator may communicate upward to any parent tmux hierarchy; stage workers communicate through report/signal artifacts only.
 
 Recommended agent roles when available:
 - `scout` for GATHER
@@ -168,6 +169,7 @@ Every worker prompt must include:
 - a precise signal path
 - the rule to follow `../../assets/mux/protocol/subagent.md`
 - the rule to return exactly `0` on success
+- the rule to avoid `tmux_agent` / `report_parent` from workers
 
 ## Verification contract
 
