@@ -1,73 +1,241 @@
 #!/usr/bin/env python3
-"""Static contract checks for tmux-agent settled handoff semantics."""
+"""Behavior checks for tmux-agent settlement and parent-delivery decisions."""
 
 from __future__ import annotations
 
-import re
+import json
+import subprocess
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-TMUX_AGENT_EXTENSION = PROJECT_ROOT / "packages" / "pi-ac-workflow" / "extensions" / "tmux-agent" / "index.ts"
-TMUX_AGENT_SOURCE = TMUX_AGENT_EXTENSION.read_text()
+SETTLEMENT_RUNTIME = PROJECT_ROOT / "packages" / "pi-ac-workflow" / "extensions" / "tmux-agent" / "settlement-runtime.ts"
+
+NODE_RUNTIME_EVAL = """
+import { pathToFileURL } from "node:url";
+
+const helperPath = process.argv[1];
+const payload = JSON.parse(process.argv[2]);
+const runtime = await import(pathToFileURL(helperPath).href);
+
+if (payload.action === "evaluate") {
+	process.stdout.write(JSON.stringify(runtime.evaluateBridgeSettlement(payload.events)));
+	process.exit(0);
+}
+
+if (payload.action === "delivery") {
+	process.stdout.write(JSON.stringify({
+		deliver: runtime.shouldDeliverBridgeEventToParent(payload.event),
+		trigger: runtime.shouldTriggerTurnForEvent(payload.event, payload.launch),
+	}));
+	process.exit(0);
+}
+
+if (payload.action === "settled-trigger") {
+	process.stdout.write(JSON.stringify({
+		trigger: runtime.shouldTriggerTurnForSettledState(payload.state, payload.launch),
+	}));
+	process.exit(0);
+}
+
+throw new Error(`Unsupported action: ${payload.action}`);
+""".strip()
 
 
-def test_report_parent_surface_includes_explicit_closeout_kind() -> None:
-    """The child report_parent surface should expose explicit closeout declarations."""
-    assert 'type ReportParentKind = "question" | "blocker" | "progress" | "failure" | "closeout";' in TMUX_AGENT_SOURCE
-    assert 'StringEnum(["question", "blocker", "progress", "failure", "closeout"] as const)' in TMUX_AGENT_SOURCE
-    assert "reportKind: question | blocker | progress | failure | closeout" in TMUX_AGENT_SOURCE
-
-
-def test_runtime_no_longer_synthesizes_success_from_agent_end_or_quiet_time() -> None:
-    """Success should not come from agent_end snapshots, quiet time, or shutdown synthesis."""
-    assert "TERMINAL_COMPLETION_SETTLE_MS" not in TMUX_AGENT_SOURCE
-    assert 'pi.on("agent_end"' not in TMUX_AGENT_SOURCE
-    assert "flushPendingTerminalReport" not in TMUX_AGENT_SOURCE
-    assert "getLastBridgeActivityTimestamp" not in TMUX_AGENT_SOURCE
-    assert "Child exited without a valid terminal declaration." in TMUX_AGENT_SOURCE
-
-
-def test_status_surface_exposes_settled_state_and_protocol_violation() -> None:
-    """Status/report surfaces should expose explicit settled states."""
-    for state in (
-        "running",
-        "settled_completion",
-        "settled_failure",
-        "settled_blocked",
-        "settled_waiting_on_parent",
-        "protocol_violation",
-    ):
-        assert state in TMUX_AGENT_SOURCE
-    assert "bridgeSettlementState:" in TMUX_AGENT_SOURCE
-    assert "bridgeProtocolViolationReason:" in TMUX_AGENT_SOURCE
-
-
-def test_progress_is_non_follow_up_by_default_and_closeout_is_non_terminal_until_exit() -> None:
-    """Progress should stay bounded while closeout waits for settlement."""
-    trigger_fn_match = re.search(
-        r"function shouldTriggerTurnForEvent\(event: BridgeEvent, launch: BridgeLaunchFile\): boolean \{(?P<body>.*?)\n\}",
-        TMUX_AGENT_SOURCE,
-        flags=re.DOTALL,
+def run_runtime(payload: dict[str, Any]) -> dict[str, Any]:
+    """Execute the package-local runtime helper through Node and parse JSON output."""
+    result = subprocess.run(
+        [
+            "node",
+            "--experimental-strip-types",
+            "--input-type=module",
+            "--eval",
+            NODE_RUNTIME_EVAL,
+            str(SETTLEMENT_RUNTIME),
+            json.dumps(payload),
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    assert trigger_fn_match is not None
-    trigger_body = trigger_fn_match.group("body")
-    assert 'if (event.type === "closeout") return false;' in trigger_body
-    assert 'if (event.type === "progress") return Boolean(event.requiresResponse);' in trigger_body
-
-    settled_trigger_match = re.search(
-        r"function shouldTriggerTurnForSettledState\(state: SettledTerminalState, launch: BridgeLaunchFile\): boolean \{(?P<body>.*?)\n\}",
-        TMUX_AGENT_SOURCE,
-        flags=re.DOTALL,
+    assert result.returncode == 0, (
+        "Node runtime helper execution failed.\n"
+        f"STDOUT:\n{result.stdout}\n"
+        f"STDERR:\n{result.stderr}"
     )
-    assert settled_trigger_match is not None
-    settled_trigger_body = settled_trigger_match.group("body")
-    assert 'if (state === "settled_completion") return launch.notificationMode === "notify-and-follow-up";' in settled_trigger_body
+    try:
+        parsed = json.loads(result.stdout)
+    except json.JSONDecodeError as error:  # pragma: no cover - assertion helper
+        raise AssertionError(f"Expected JSON output.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}") from error
+    assert isinstance(parsed, dict)
+    return parsed
 
 
-def test_settlement_evaluation_covers_closeout_and_protocol_violations() -> None:
-    """Settlement state machine should handle success and non-success terminal branches honestly."""
-    assert "function evaluateBridgeSettlement(events: BridgeEvent[]): BridgeSettlementEvaluation" in TMUX_AGENT_SOURCE
-    assert "Multiple closeout declarations were emitted." in TMUX_AGENT_SOURCE
-    assert "Post-closeout child report detected:" in TMUX_AGENT_SOURCE
-    assert "settled_waiting_on_parent" in TMUX_AGENT_SOURCE
-    assert "const requiresResponse = request.kind === \"closeout\" ? false" in TMUX_AGENT_SOURCE
+def event(
+    event_id: str,
+    event_type: str,
+    *,
+    direction: str = "child_to_parent",
+    requires_response: bool | None = None,
+) -> dict[str, Any]:
+    """Build a synthetic bridge event payload used by helper behavior tests."""
+    payload: dict[str, Any] = {
+        "eventId": event_id,
+        "direction": direction,
+        "type": event_type,
+    }
+    if requires_response is not None:
+        payload["requiresResponse"] = requires_response
+    return payload
+
+
+def test_settlement_waits_for_exit_even_when_closeout_exists() -> None:
+    """A closeout declaration is non-terminal until the child actually exits."""
+    result = run_runtime({"action": "evaluate", "events": [event("closeout-1", "closeout")]})
+    assert result["settledState"] == "running"
+
+
+def test_settlement_completes_only_after_closeout_and_exit() -> None:
+    """Successful settlement should require closeout + explicit exit evidence."""
+    result = run_runtime(
+        {
+            "action": "evaluate",
+            "events": [
+                event("closeout-1", "closeout"),
+                event("exited-1", "exited", direction="system"),
+            ],
+        }
+    )
+    assert result["settledState"] == "settled_completion"
+    terminal_event = result["terminalEvent"]
+    assert isinstance(terminal_event, dict)
+    assert terminal_event["eventId"] == "closeout-1"
+
+
+def test_settlement_marks_undeclared_exit_as_protocol_violation() -> None:
+    """Exit without a declared terminal report must not settle as success."""
+    result = run_runtime({"action": "evaluate", "events": [event("exited-1", "exited", direction="system")]})
+    assert result["settledState"] == "protocol_violation"
+    assert result["protocolViolationReason"] == "Child exited without a valid terminal declaration."
+
+
+def test_settlement_maps_declared_non_success_terminal_reports() -> None:
+    """Declared non-success terminal reports should settle honestly after exit."""
+    cases = [
+        ("failure", "settled_failure"),
+        ("blocker", "settled_blocked"),
+        ("question", "settled_waiting_on_parent"),
+    ]
+    for terminal_type, expected_state in cases:
+        result = run_runtime(
+            {
+                "action": "evaluate",
+                "events": [
+                    event("terminal-1", terminal_type),
+                    event("exited-1", "exited", direction="system"),
+                ],
+            }
+        )
+        assert result["settledState"] == expected_state
+
+
+def test_settlement_flags_closeout_sequence_protocol_violations() -> None:
+    """Multiple closeouts or post-closeout reports should settle as protocol violations."""
+    multiple_closeouts = run_runtime(
+        {
+            "action": "evaluate",
+            "events": [
+                event("closeout-1", "closeout"),
+                event("closeout-2", "closeout"),
+                event("exited-1", "exited", direction="system"),
+            ],
+        }
+    )
+    assert multiple_closeouts["settledState"] == "protocol_violation"
+    assert multiple_closeouts["protocolViolationReason"] == "Multiple closeout declarations were emitted."
+
+    post_closeout_report = run_runtime(
+        {
+            "action": "evaluate",
+            "events": [
+                event("closeout-1", "closeout"),
+                event("progress-1", "progress"),
+                event("exited-1", "exited", direction="system"),
+            ],
+        }
+    )
+    assert post_closeout_report["settledState"] == "protocol_violation"
+    assert "Post-closeout child report detected: progress (progress-1)" == post_closeout_report["protocolViolationReason"]
+
+
+def test_delivery_hides_closeout_until_settlement() -> None:
+    """Closeout should not be parent-visible before settlement finalization."""
+    decision = run_runtime(
+        {
+            "action": "delivery",
+            "event": event("closeout-1", "closeout"),
+            "launch": {"notificationMode": "notify-and-follow-up"},
+        }
+    )
+    assert decision == {"deliver": False, "trigger": False}
+
+
+def test_delivery_keeps_progress_non_follow_up_by_default() -> None:
+    """Progress remains visible but should only trigger follow-up when requested."""
+    default_progress = run_runtime(
+        {
+            "action": "delivery",
+            "event": event("progress-1", "progress"),
+            "launch": {"notificationMode": "notify-and-follow-up"},
+        }
+    )
+    assert default_progress == {"deliver": True, "trigger": False}
+
+    requested_progress = run_runtime(
+        {
+            "action": "delivery",
+            "event": event("progress-2", "progress", requires_response=True),
+            "launch": {"notificationMode": "notify-and-follow-up"},
+        }
+    )
+    assert requested_progress == {"deliver": True, "trigger": True}
+
+
+def test_settled_trigger_decisions_obey_notification_mode() -> None:
+    """Settlement follow-up should respect completion vs non-success notification rules."""
+    completion_notify = run_runtime(
+        {
+            "action": "settled-trigger",
+            "state": "settled_completion",
+            "launch": {"notificationMode": "notify"},
+        }
+    )
+    assert completion_notify == {"trigger": False}
+
+    completion_follow_up = run_runtime(
+        {
+            "action": "settled-trigger",
+            "state": "settled_completion",
+            "launch": {"notificationMode": "notify-and-follow-up"},
+        }
+    )
+    assert completion_follow_up == {"trigger": True}
+
+    failure_notify = run_runtime(
+        {
+            "action": "settled-trigger",
+            "state": "settled_failure",
+            "launch": {"notificationMode": "notify"},
+        }
+    )
+    assert failure_notify == {"trigger": True}
+
+    silent_failure = run_runtime(
+        {
+            "action": "settled-trigger",
+            "state": "settled_failure",
+            "launch": {"notificationMode": "silent"},
+        }
+    )
+    assert silent_failure == {"trigger": False}

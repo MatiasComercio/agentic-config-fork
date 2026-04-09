@@ -7,6 +7,12 @@ import * as path from "node:path";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import {
+	evaluateBridgeSettlement,
+	shouldDeliverBridgeEventToParent,
+	shouldTriggerTurnForEvent,
+	shouldTriggerTurnForSettledState,
+} from "./settlement-runtime";
 
 const EXTENSION_NAME = "tmux-agent";
 const DEFAULT_MODEL = "openai-codex/gpt-5.3-codex";
@@ -1496,74 +1502,6 @@ async function readBridgeEvents(bridgeDir: string): Promise<BridgeEvent[]> {
 	}
 }
 
-function isTerminalDeclarationBridgeEvent(event: BridgeEvent): boolean {
-	return event.direction === "child_to_parent" && (event.type === "closeout" || event.type === "failure" || event.type === "blocker" || event.type === "question");
-}
-
-function mapBridgeTerminalEventToSettledState(event: BridgeEvent): SettledTerminalState {
-	switch (event.type) {
-		case "closeout":
-			return "settled_completion";
-		case "failure":
-			return "settled_failure";
-		case "blocker":
-			return "settled_blocked";
-		case "question":
-			return "settled_waiting_on_parent";
-		default:
-			throw new Error(`Unsupported terminal bridge event type: ${event.type}`);
-	}
-}
-
-interface BridgeSettlementEvaluation {
-	settledState: BridgeSettlementState;
-	terminalEvent?: BridgeEvent;
-	protocolViolationReason?: string;
-}
-
-function evaluateBridgeSettlement(events: BridgeEvent[]): BridgeSettlementEvaluation {
-	const childExited = hasBridgeExitEvent(events);
-	if (!childExited) {
-		return { settledState: "running" };
-	}
-
-	const childReports = events.filter((event) => event.direction === "child_to_parent");
-	const closeoutEvents = childReports.filter((event) => event.type === "closeout");
-	if (closeoutEvents.length > 1) {
-		return {
-			settledState: "protocol_violation",
-			protocolViolationReason: "Multiple closeout declarations were emitted.",
-		};
-	}
-	if (closeoutEvents.length === 1) {
-		const closeoutEvent = closeoutEvents[0];
-		const closeoutIndex = childReports.findIndex((event) => event.eventId === closeoutEvent.eventId);
-		const postCloseoutEvent = closeoutIndex === -1 ? undefined : childReports.slice(closeoutIndex + 1)[0];
-		if (postCloseoutEvent) {
-			return {
-				settledState: "protocol_violation",
-				protocolViolationReason: `Post-closeout child report detected: ${postCloseoutEvent.type} (${postCloseoutEvent.eventId})`,
-			};
-		}
-		return {
-			settledState: "settled_completion",
-			terminalEvent: closeoutEvent,
-		};
-	}
-
-	const declaredNonSuccessEvent = [...childReports].reverse().find((event) => isTerminalDeclarationBridgeEvent(event));
-	if (!declaredNonSuccessEvent) {
-		return {
-			settledState: "protocol_violation",
-			protocolViolationReason: "Child exited without a valid terminal declaration.",
-		};
-	}
-	return {
-		settledState: mapBridgeTerminalEventToSettledState(declaredNonSuccessEvent),
-		terminalEvent: declaredNonSuccessEvent,
-	};
-}
-
 async function writeBridgeReport(bridgeDir: string, baseName: string, markdown: string): Promise<{ reportPath: string; reportNumber: number }> {
 	const reportNumber = await nextBridgeReportNumber(bridgeDir);
 	const reportFile = `${String(reportNumber).padStart(4, "0")}-${slugify(baseName) || "report"}.md`;
@@ -2587,26 +2525,6 @@ function getSessionBridgeEntries(ctx: ExtensionContext): SessionBridgeEntry[] {
 	return results;
 }
 
-function hasBridgeExitEvent(events: BridgeEvent[]): boolean {
-	return events.some((event) => event.direction === "system" && event.type === "exited");
-}
-
-function shouldTriggerTurnForEvent(event: BridgeEvent, launch: BridgeLaunchFile): boolean {
-	if (launch.notificationMode === "silent") return false;
-	if (event.type === "closeout") return false;
-	if (event.type === "progress") return Boolean(event.requiresResponse);
-	if (event.type === "question" || event.type === "blocker") return true;
-	if (event.type === "failure") return true;
-	if (event.requiresResponse) return true;
-	return launch.notificationMode === "notify-and-follow-up";
-}
-
-function shouldTriggerTurnForSettledState(state: SettledTerminalState, launch: BridgeLaunchFile): boolean {
-	if (launch.notificationMode === "silent") return false;
-	if (state === "settled_completion") return launch.notificationMode === "notify-and-follow-up";
-	return true;
-}
-
 async function buildParentDeliveryContent(
 	event: BridgeEvent,
 	launch: BridgeLaunchFile,
@@ -2734,8 +2652,8 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 					continue;
 				}
 
-				const content = await buildParentDeliveryContent(event, launch);
-				if (launch.notificationMode !== "silent") {
+				if (launch.notificationMode !== "silent" && shouldDeliverBridgeEventToParent(event)) {
+					const content = await buildParentDeliveryContent(event, launch);
 					pi.sendMessage(
 						{
 							customType: "tmux-agent-report",
