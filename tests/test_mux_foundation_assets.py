@@ -998,3 +998,107 @@ def test_mux_ledger_fails_closed_when_required_identifier_missing(tmp_path: Path
     show_result = run_ledger_script("show", session_dir_rel, cwd=workspace)
     assert show_result.returncode == 1
     assert "Missing required ledger field(s): stage_id" in show_result.stderr
+
+
+def test_mux_ledger_rejects_illegal_advancement_from_advance_state(tmp_path: Path) -> None:
+    """Ledger should reject illegal ADVANCE->ADVANCE transition explicitly."""
+    workspace = create_workspace(tmp_path)
+    session_dir_rel = create_session(workspace, topic_slug="illegal-advancement-from-advance")
+
+    report_rel = "reports/illegal-adv-worker.md"
+    signal_rel = f"{session_dir_rel}/.signals/illegal-adv-worker.done"
+    summary_evidence_rel = f"{session_dir_rel}/research/illegal-adv-summary.json"
+    configure_dispatch_state(workspace, session_dir_rel, report_rel, signal_rel)
+
+    report_path = workspace / report_rel
+    write_worker_report(report_path)
+    emit_success_signal(workspace, signal_rel, report_rel)
+    emit_summary_evidence(workspace, report_rel, summary_evidence_rel)
+
+    gate_result = run_verify_gate(
+        workspace,
+        session_dir_rel,
+        summary_evidence_rel=summary_evidence_rel,
+    )
+    assert gate_result.returncode == 0, gate_result.stdout + gate_result.stderr
+
+    ledger = read_ledger(workspace, session_dir_rel)
+    assert ledger["control_state"] == "ADVANCE"
+
+    illegal_advancement = run_ledger_script(
+        "transition",
+        session_dir_rel,
+        "--to",
+        "ADVANCE",
+        "--reason",
+        "attempt bypass: ADVANCE->ADVANCE",
+        cwd=workspace,
+    )
+    assert illegal_advancement.returncode == 1
+    assert "Illegal transition" in illegal_advancement.stderr
+
+    ledger_after = read_ledger(workspace, session_dir_rel)
+    assert ledger_after["control_state"] == "ADVANCE"
+
+
+def test_mux_ledger_blocker_path_never_silently_bypasses(tmp_path: Path) -> None:
+    """Blocker path should never silently bypass; missing evidence always routes to BLOCK."""
+    workspace = create_workspace(tmp_path)
+    session_dir_rel = create_session(workspace, topic_slug="blocker-never-bypasses")
+
+    report_rel = "reports/blocker-bypass-worker.md"
+    signal_rel = f"{session_dir_rel}/.signals/blocker-bypass-worker.done"
+    configure_dispatch_state(workspace, session_dir_rel, report_rel, signal_rel)
+
+    report_path = workspace / report_rel
+    write_worker_report(report_path)
+    emit_success_signal(workspace, signal_rel, report_rel)
+
+    blocker_open_result = run_ledger_script(
+        "blocker-open",
+        session_dir_rel,
+        "--reason",
+        "missing prerequisite artifact",
+        "--missing",
+        "research/required.md",
+        cwd=workspace,
+    )
+    assert blocker_open_result.returncode == 0, blocker_open_result.stdout + blocker_open_result.stderr
+
+    gate_result = run_verify_gate(workspace, session_dir_rel)
+    assert gate_result.returncode == 1, gate_result.stdout + gate_result.stderr
+
+    gate_payload = parse_json_stdout(gate_result)
+    assert gate_payload["gate_status"] == "block"
+
+    ledger = read_ledger(workspace, session_dir_rel)
+    assert ledger["control_state"] == "BLOCK"
+    assert ledger["blocker"]["active"] is True
+
+
+def test_mux_ledger_recovery_path_never_silent_fallback(tmp_path: Path) -> None:
+    """Recovery path should never silently fall back; protocol violations always route to RECOVER."""
+    workspace = create_workspace(tmp_path)
+    session_dir_rel = create_session(workspace, topic_slug="recovery-never-fallback")
+
+    report_rel = "reports/recovery-fallback-worker.md"
+    signal_rel = f"{session_dir_rel}/.signals/recovery-fallback-worker.done"
+    summary_evidence_rel = f"{session_dir_rel}/research/recovery-fallback-summary.json"
+    configure_dispatch_state(workspace, session_dir_rel, report_rel, signal_rel)
+
+    ledger_path = workspace / session_dir_rel / LEDGER_FILE_NAME
+    ledger_payload = json.loads(ledger_path.read_text())
+    assert "declared_dispatch" in ledger_payload
+    ledger_payload["declared_dispatch"]["objective"] = ""
+    ledger_path.write_text(json.dumps(ledger_payload, indent=2, sort_keys=True) + "\n")
+
+    gate_result = run_verify_gate(workspace, session_dir_rel)
+    assert gate_result.returncode == 1, gate_result.stdout + gate_result.stderr
+
+    gate_payload = parse_json_stdout(gate_result)
+    assert gate_payload["gate_status"] == "recover"
+    assert "declared_dispatch.objective" in gate_payload["reason"]
+
+    ledger = read_ledger(workspace, session_dir_rel)
+    assert ledger["control_state"] == "RECOVER"
+    assert ledger["recovery"]["required"] is True

@@ -978,3 +978,130 @@ test("strict deactivate cleanup returns the session to non-strict behavior", asy
     await cleanupWorkspace(workspace);
   }
 });
+
+test("strict deactivate re-entry is a no-op", async () => {
+  const workspace = await createWorkspace("strict-mux-runtime-deactivate-reentry");
+  try {
+    const { toolCallHandler } = createRuntime();
+    const ctx = createContext(workspace);
+    await bootstrapStrictSession(toolCallHandler, ctx, workspace, "deactivate-reentry");
+
+    const deactivateEvent = {
+      toolName: "bash",
+      input: {
+        command: `uv run ${shellQuote(path.join(MUX_TOOLS_ROOT, "deactivate.py"))}`,
+      },
+    };
+
+    const firstDecision = await toolCallHandler(deactivateEvent, ctx);
+    assert.equal(firstDecision, undefined);
+
+    const firstResult = runShell(deactivateEvent.input.command, workspace);
+    assert.equal(firstResult.status, 0, firstResult.stdout + firstResult.stderr);
+    assert.equal(parseOutputValue(firstResult.stdout, "STRICT_RUNTIME_DEACTIVATED"), "true");
+
+    const secondDecision = await toolCallHandler(deactivateEvent, ctx);
+    assert.equal(secondDecision, undefined);
+
+    const secondResult = runShell(deactivateEvent.input.command, workspace);
+    assert.equal(secondResult.status, 0, secondResult.stdout + secondResult.stderr);
+    assert.equal(parseOutputValue(secondResult.stdout, "STRICT_RUNTIME_DEACTIVATED"), "false");
+  } finally {
+    await cleanupWorkspace(workspace);
+  }
+});
+
+test("strict ledger rejects illegal ADVANCE->ADVANCE transition", async () => {
+  const workspace = await createWorkspace("strict-mux-runtime-illegal-advancement");
+  try {
+    const { toolCallHandler } = createRuntime();
+    const ctx = createContext(workspace);
+    const bootstrap = await bootstrapStrictSession(toolCallHandler, ctx, workspace, "illegal-advancement");
+
+    const reportPath = "reports/illegal-adv-worker.md";
+    const signalPath = `${bootstrap.sessionDir}/.signals/illegal-adv-worker.done`;
+    const objective = "implement approved bounded change";
+    const scope = "phase-008 regression tests";
+
+    runLedgerCommand(workspace, "prerequisites", bootstrap.sessionDir, "--required", "phase-target", "--status", "ready");
+    runLedgerCommand(workspace, "transition", bootstrap.sessionDir, "--to", "RESOLVE", "--reason", "phase target persisted");
+    runLedgerCommand(workspace, "transition", bootstrap.sessionDir, "--to", "DECLARE", "--reason", "prerequisites evaluated");
+    runLedgerCommand(
+      workspace,
+      "declare",
+      bootstrap.sessionDir,
+      "--worker-type",
+      "worker",
+      "--objective",
+      objective,
+      "--scope",
+      scope,
+      "--report-path",
+      reportPath,
+      "--signal-path",
+      signalPath,
+      "--expected-artifact",
+      "report",
+      "--expected-artifact",
+      "signal",
+      "--expected-artifact",
+      "summary",
+    );
+
+    const task = [
+      "Read and follow packages/pi-ac-workflow/assets/mux/protocol/subagent.md.",
+      "",
+      "Objective:",
+      `- ${objective}`,
+      "",
+      "Constraints:",
+      `- ${scope}`,
+      "- No nested subagents",
+      "",
+      "Required report path:",
+      `- ${reportPath}`,
+      "",
+      "Required signal path:",
+      `- ${signalPath}`,
+      "",
+      "Before returning:",
+      "- Write the report",
+      "- Create the signal with packages/pi-ac-workflow/assets/mux/tools/signal.py",
+      "- Return exactly 0 on success",
+    ].join("\n");
+
+    const dispatchDecision = await toolCallHandler(
+      {
+        toolName: "subagent",
+        input: { agent: "worker", task },
+      },
+      ctx,
+    );
+    assert.equal(dispatchDecision, undefined);
+
+    let ledger = await readLedger(workspace, bootstrap.sessionDir);
+    assert.equal(ledger.control_state, "DISPATCH");
+
+    const advanceTransitionResult = runShell(
+      [
+        "uv run",
+        shellQuote(path.join(MUX_TOOLS_ROOT, "ledger.py")),
+        "transition",
+        shellQuote(bootstrap.sessionDir),
+        "--to",
+        "ADVANCE",
+        "--reason",
+        shellQuote("attempt bypass: ADVANCE->ADVANCE"),
+      ].join(" "),
+      workspace,
+    );
+
+    assert.notEqual(advanceTransitionResult.status, 0);
+    assert.match(String(advanceTransitionResult.stderr), /Illegal transition/i);
+
+    ledger = await readLedger(workspace, bootstrap.sessionDir);
+    assert.equal(ledger.control_state, "DISPATCH");
+  } finally {
+    await cleanupWorkspace(workspace);
+  }
+});
