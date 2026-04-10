@@ -159,6 +159,79 @@ async function readLedger(workspace, sessionDir) {
   return JSON.parse(await readFile(path.join(workspace, sessionDir, ".mux-ledger.json"), "utf8"));
 }
 
+async function writeWorkerReport(workspace, reportPath) {
+  const absolutePath = path.join(workspace, reportPath);
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(
+    absolutePath,
+    [
+      "# Worker Report",
+      "",
+      "## Table of Contents",
+      "- Item",
+      "",
+      "## Executive Summary",
+      "- **Status**: pass",
+      `- **Files**: ${reportPath}`,
+      "",
+      "### Next Steps",
+      "- **Recommended action**: continue",
+      "- **Dependencies**: none",
+      "- **Routing hint**: writer",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+function emitSuccessSignal(workspace, signalPath, reportPath) {
+  const result = runShell(
+    [
+      "uv run",
+      shellQuote(path.join(MUX_TOOLS_ROOT, "signal.py")),
+      shellQuote(signalPath),
+      "--path",
+      shellQuote(reportPath),
+      "--status",
+      "success",
+    ].join(" "),
+    workspace,
+  );
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  return result;
+}
+
+function emitSummaryEvidence(workspace, reportPath, summaryEvidencePath) {
+  const result = runShell(
+    [
+      "uv run",
+      shellQuote(path.join(MUX_TOOLS_ROOT, "extract-summary.py")),
+      shellQuote(reportPath),
+      "--evidence",
+      "--evidence-path",
+      shellQuote(summaryEvidencePath),
+    ].join(" "),
+    workspace,
+  );
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  return result;
+}
+
+function runVerifyGate(workspace, sessionDir, summaryEvidencePath) {
+  return runShell(
+    [
+      "uv run",
+      shellQuote(path.join(MUX_TOOLS_ROOT, "verify.py")),
+      shellQuote(sessionDir),
+      "--action",
+      "gate",
+      "--summary-evidence",
+      shellQuote(summaryEvidencePath),
+    ].join(" "),
+    workspace,
+  );
+}
+
 test("registers a workflow-owned tool_call guard", () => {
   const { toolCallHandler } = createRuntime();
   assert.equal(typeof toolCallHandler, "function");
@@ -1020,6 +1093,7 @@ test("strict ledger rejects illegal ADVANCE->ADVANCE transition", async () => {
 
     const reportPath = "reports/illegal-adv-worker.md";
     const signalPath = `${bootstrap.sessionDir}/.signals/illegal-adv-worker.done`;
+    const summaryEvidencePath = `${bootstrap.sessionDir}/research/illegal-adv-summary.json`;
     const objective = "implement approved bounded change";
     const scope = "phase-008 regression tests";
 
@@ -1079,8 +1153,15 @@ test("strict ledger rejects illegal ADVANCE->ADVANCE transition", async () => {
     );
     assert.equal(dispatchDecision, undefined);
 
+    await writeWorkerReport(workspace, reportPath);
+    emitSuccessSignal(workspace, signalPath, reportPath);
+    emitSummaryEvidence(workspace, reportPath, summaryEvidencePath);
+
+    const gateResult = runVerifyGate(workspace, bootstrap.sessionDir, summaryEvidencePath);
+    assert.equal(gateResult.status, 0, gateResult.stdout + gateResult.stderr);
+
     let ledger = await readLedger(workspace, bootstrap.sessionDir);
-    assert.equal(ledger.control_state, "DISPATCH");
+    assert.equal(ledger.control_state, "ADVANCE");
 
     const advanceTransitionResult = runShell(
       [
@@ -1100,7 +1181,7 @@ test("strict ledger rejects illegal ADVANCE->ADVANCE transition", async () => {
     assert.match(String(advanceTransitionResult.stderr), /Illegal transition/i);
 
     ledger = await readLedger(workspace, bootstrap.sessionDir);
-    assert.equal(ledger.control_state, "DISPATCH");
+    assert.equal(ledger.control_state, "ADVANCE");
   } finally {
     await cleanupWorkspace(workspace);
   }

@@ -82,8 +82,8 @@ The shared ledger enforces these transitions:
 - Phase 006 aligns sibling `mux` / `mux-roadmap` surfaces to the strict control-plane contract: strict bootstrap (`session.py --strict-runtime --session-key <key>`), declared dispatch plus report/signal/summary evidence gating, `BLOCK` for missing prerequisites/evidence, `RECOVER` for invalid dispatch or inconsistent evidence, and no manual fallback outside protocol.
 - Phase 007 ships the guardrail-policy split plus transcript/checklist protocol artifacts for deterministic strict-flow documentation.
 
-## Boundary for later phases
+## Shared foundation boundary
 - This foundation does not claim automatic task-notification support.
 - This foundation does not claim nested skill loading inside workers.
-- Later phases should consume this asset root and protocol artifacts, not recreate local copies of the same helpers.
-- Later release-surface closeout still owns final packaging/reporting reconciliation work outside this shared foundation.
+- Consumers should consume this asset root and protocol artifacts, not recreate local copies of the same helpers.
+- Package/roadmap release-surface bookkeeping consumes this shared foundation but lives in package status surfaces and `.specs` artifacts rather than inside the ledger contract itself.

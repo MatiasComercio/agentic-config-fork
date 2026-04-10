@@ -372,13 +372,15 @@ def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
     assert "MUX_OSPEC_ACK" not in mux_roadmap_text
 
 
-def test_generated_pi_mux_foundation_docs_reflect_phase_007_asset_boundary() -> None:
-    """Generated shared mux docs should reflect the shipped Phase 007 artifact boundary."""
+def test_generated_pi_mux_foundation_docs_reflect_post_it005_release_boundary() -> None:
+    """Generated shared mux docs should reflect the shipped post-IT005 release boundary."""
     foundation_text = (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "protocol" / "foundation.md").read_text()
     assert "Phase 005 hardens `mux-ospec` as the canonical strict consumer." in foundation_text
     assert "Phase 006 aligns sibling `mux` / `mux-roadmap` surfaces to the strict control-plane contract" in foundation_text
     assert "Phase 007 ships the guardrail-policy split plus transcript/checklist protocol artifacts for deterministic strict-flow documentation." in foundation_text
     assert "later phases still own transcripts/checklists and final release-surface alignment" not in foundation_text
+    assert "Later release-surface closeout still owns final packaging/reporting reconciliation work outside this shared foundation." not in foundation_text
+    assert "Package/roadmap release-surface bookkeeping consumes this shared foundation" in foundation_text
 
     mux_assets_readme = (PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "README.md").read_text()
     assert "Phase 004/005/006 now ship the runtime seam plus strict control-plane consumption across `mux-ospec`, `mux`, and `mux-roadmap`." in mux_assets_readme
@@ -443,6 +445,15 @@ def test_generated_pi_mux_protocol_artifacts_cover_phase_007_contract() -> None:
     assert "extract-summary.py --evidence --evidence-path <path>" in checklist_text
     assert "verify.py --action gate --summary-evidence <path>" in checklist_text
     assert "session.py --strict-runtime --session-key <key>" in checklist_text
+    assert "**H01**" in checklist_text
+    assert "**H05**" in checklist_text
+    assert "Prompt Matrix — Explicit Strict Invocation Cases" in checklist_text
+    assert "MUX_OSPEC_ACK" in checklist_text
+    assert "gate_status: block" in checklist_text
+    assert "control_state: RECOVER" in checklist_text
+    assert "**R01**" in checklist_text
+    assert "**R05**" in checklist_text
+    assert "`ADVANCE` is reachable only via a passed gate with valid report + signal + summary evidence." in checklist_text
 
 
 def test_generated_mux_tools_support_session_signal_and_summary_flow(tmp_path: Path) -> None:
@@ -1083,7 +1094,6 @@ def test_mux_ledger_recovery_path_never_silent_fallback(tmp_path: Path) -> None:
 
     report_rel = "reports/recovery-fallback-worker.md"
     signal_rel = f"{session_dir_rel}/.signals/recovery-fallback-worker.done"
-    summary_evidence_rel = f"{session_dir_rel}/research/recovery-fallback-summary.json"
     configure_dispatch_state(workspace, session_dir_rel, report_rel, signal_rel)
 
     ledger_path = workspace / session_dir_rel / LEDGER_FILE_NAME

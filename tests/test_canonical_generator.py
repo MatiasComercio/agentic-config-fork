@@ -361,7 +361,12 @@ def test_mux_documentation_surfaces_match_current_generated_boundary() -> None:
     assert "canonical strict consumption across `mux-ospec`, `mux`, and `mux-roadmap`" in workflow_readme
     assert "shipped Phase 007 protocol artifacts under `assets/mux/protocol/`" in workflow_readme
     assert "Phase 007 now ships guardrail-policy plus transcript/checklist protocol artifacts" in workflow_readme
+    assert "### Deferred surface\n- None." in workflow_readme
+    assert "Phase 008 now ships the explicit Python + JS strict mux regressions" in workflow_readme
+    assert "`assets/mux/protocol/strict-regression-checklist.md` is the current release-surface regression matrix" in workflow_readme
     assert "Transcript/checklist protocol artifacts and final release-surface closeout remain deferred" not in workflow_readme
+    assert "Final release-surface closeout remains deferred to a later IT005 phase." not in workflow_readme
+    assert "later IT005 work remains scoped to regression-suite automation and final release-surface closeout" not in workflow_readme
     assert "Strict sibling alignment for `ac-workflow-mux` and `ac-workflow-mux-roadmap` remains deferred" not in workflow_readme
 
     hook_compat_readme = (PROJECT_ROOT / "packages" / "pi-compat" / "extensions" / "hook-compat" / "README.md").read_text()
