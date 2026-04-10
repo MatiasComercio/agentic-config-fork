@@ -372,3 +372,124 @@ def test_mux_documentation_surfaces_match_current_generated_boundary() -> None:
     hook_compat_readme = (PROJECT_ROOT / "packages" / "pi-compat" / "extensions" / "hook-compat" / "README.md").read_text()
     assert "Shared hook-adapter foundation" in hook_compat_readme
     assert "Shared Phase 005" not in hook_compat_readme
+
+
+def test_pi_user_facing_assets_use_pi_first_wording() -> None:
+    """Pi-facing generated/manual assets should avoid unnecessary Claude branding."""
+    forbidden_phrases = {
+        PROJECT_ROOT / "packages" / "pi-ac-meta" / "skills" / "ac-meta-hook-writer" / "SKILL.md": [
+            "Claude Code Hook Writer",
+            "Creates Python hooks for Claude Code",
+            "original Claude Code hook authoring target",
+            "Tool parameters from Claude Code.",
+            "Pretooluse hook for Claude Code",
+            "Claude Code hook format",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-meta" / "skills" / "ac-meta-skill-writer" / "SKILL.md": [
+            "authoring Claude Code skills",
+            "code.claude.com/docs/en/skills",
+            "original Claude Code skill authoring target",
+            "Claude Code skill specification",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-setup-voice-mode" / "SKILL.md": [
+            "Setup VoiceMode for Claude Code",
+            "voice interactions with Claude Code",
+            "Add MCP server to Claude Code",
+            "Restart Claude Code",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-human-agentic-design" / "SKILL.md": [
+            "/tmp/claude-prototypes/<session-id>",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-gsuite" / "SKILL.md": [
+            "for Claude Code with multi-account support",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-agentic-export" / "SKILL.md": [
+            "Claude-only delegation primitive",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-agentic-import" / "SKILL.md": [
+            "Claude-only delegation primitive",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-agentic-share" / "SKILL.md": [
+            "Claude-only delegation primitives",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-ac-issue" / "SKILL.md": [
+            "Claude-plugin-root version lookup",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-video-query" / "SKILL.md": [
+            "Claude plugin root",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-had" / "SKILL.md": [
+            "Claude-only delegation primitive",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-dry-run" / "SKILL.md": [
+            "Claude-compatible PID tracing",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-dr" / "SKILL.md": [
+            "<claude_pid>",
+            "raw Claude skill-delegation syntax",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-git" / "skills" / "ac-git-pull-request" / "SKILL.md": [
+            "Claude Code Attribution",
+            "Links to Claude Code for transparency",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-mux" / "SKILL.md": [
+            "mechanical Claude MUX clone",
+            "Claude-only hooks or task notifications",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-mux-ospec" / "SKILL.md": [
+            "original Claude workflow",
+            "Claude-only nested skill execution",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-mux-roadmap" / "SKILL.md": [
+            "Claude-only nested skill loading",
+            "original Claude-only `start` / `continue` / `--wait-after-plan` bootstrap surface",
+            "original Claude skill had one",
+            "Claude-only orchestration machinery",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-mux-subagent" / "SKILL.md": [
+            "Runtime Differences From Claude",
+            "Claude-style `TaskOutput`",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "README.md": [
+            "pi and Claude mux surfaces",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "assets" / "mux" / "protocol" / "subagent.md": [
+            "Claude-style `TaskOutput`",
+        ],
+        PROJECT_ROOT / "packages" / "pi-compat" / "README.md": [
+            "Claude-style pre-tool hook runtime",
+            "pi-to-Claude payload mapping",
+        ],
+        PROJECT_ROOT / "packages" / "pi-compat" / "extensions" / "README.md": [
+            "pi-to-Claude payload mapping",
+        ],
+        PROJECT_ROOT / "packages" / "pi-compat" / "extensions" / "hook-compat" / "README.md": [
+            "Claude-style pre-tool hook scripts",
+            "pi-to-Claude payload mapping",
+        ],
+        PROJECT_ROOT / "packages" / "pi-compat" / "extensions" / "notebook-edit" / "README.md": [
+            "Claude `NotebookEdit` events",
+        ],
+        PROJECT_ROOT / "packages" / "pi-ac-safety" / "README.md": [
+            "pi/Claude runtime",
+            "Claude-package scope",
+            "Claude-parity completion claim",
+        ],
+        PROJECT_ROOT / "packages" / "pi-all" / "README.md": [
+            "Claude orchestration prompts",
+            "every Claude marketplace surface",
+        ],
+    }
+
+    for path, phrases in forbidden_phrases.items():
+        text = path.read_text()
+        for phrase in phrases:
+            assert phrase not in text, f"Unexpected Claude branding in {path}: {phrase}"
+
+    assert "/tmp/pi-prototypes/<session-id>" in (
+        PROJECT_ROOT / "packages" / "pi-ac-tools" / "skills" / "ac-tools-human-agentic-design" / "SKILL.md"
+    ).read_text()
+    assert "compat payload mapping" in (PROJECT_ROOT / "packages" / "pi-compat" / "README.md").read_text()
+    assert "source-runtime `start` / `continue` / `--wait-after-plan` bootstrap surface" in (
+        PROJECT_ROOT / "packages" / "pi-ac-workflow" / "skills" / "ac-workflow-mux-roadmap" / "SKILL.md"
+    ).read_text()

@@ -26,7 +26,7 @@ Current aggregated shipped surface:
 - shared mux foundation assets plus the shipped `ac-workflow-mux`, `ac-workflow-mux-ospec`, `ac-workflow-mux-roadmap`, `ac-workflow-mux-subagent`, and `ac-workflow-tmux-agent` surfaces in `@agentic-config/pi-ac-workflow`
 - the package-owned direct `tmux-agent` extension/runtime surface in `@agentic-config/pi-ac-workflow`
 
-The shipped pi mux family is an honest adaptation, not a mechanical clone of the Claude orchestration prompts: `mux-ospec` assumes an existing spec path and `mux-roadmap` assumes an already-structured roadmap with a live progress mirror.
+The shipped pi mux family is an honest adaptation, not a mechanical clone of the source orchestration prompts: `mux-ospec` assumes an existing spec path and `mux-roadmap` assumes an already-structured roadmap with a live progress mirror.
 
 This package does **not** add its own skills or extensions. It exposes the shipped package set from `node_modules/...` paths so teams can install the current surface in one step.
 
@@ -67,7 +67,7 @@ In this package, that means:
 
 This package does **not** imply:
 - full generic `Task` / subagent runtime is solved as a shared compat primitive
-- every Claude marketplace surface already has full pi parity
+- every marketplace surface already has full pi parity
 
 ## Explicit deferred boundary
 Still explicitly deferred in the current shipped surface:

@@ -4,7 +4,7 @@ Use this skill to execute a multi-track roadmap with explicit DAG ownership, pha
 
 ## Purpose
 
-This pi adaptation keeps the useful roadmap-orchestration behavior without pretending the runtime has Claude-only nested skill loading or task notifications.
+This pi adaptation keeps the useful roadmap-orchestration behavior without pretending the runtime has non-pi nested skill loading or task notifications.
 
 The coordinator should:
 - own the roadmap DAG directly
@@ -20,7 +20,7 @@ This pi wrapper assumes:
 - the relevant phase specs already exist or are being managed outside this wrapper
 - the roadmap already has, or can accept, a live `## Implementation Progress` mirror
 
-It does not recreate the original Claude-only `start` / `continue` / `--wait-after-plan` bootstrap surface or split a monolithic roadmap into per-phase specs automatically.
+It does not recreate the original source-runtime `start` / `continue` / `--wait-after-plan` bootstrap surface or split a monolithic roadmap into per-phase specs automatically.
 Use it to execute an already-structured roadmap honestly on top of the shared pi mux foundation.
 
 ## Mandatory first actions
@@ -213,7 +213,7 @@ Use one short `say` alert when you need the user's attention.
 ## Post-track and final validation
 
 Only run post-track fixer loops, broader QA sweeps, or release validation when the roadmap explicitly calls for them.
-Do not invent a hidden sentinel or QA pipeline just because the original Claude skill had one.
+Do not invent a hidden sentinel or QA pipeline just because the source skill had one.
 
 ## Completion
 
@@ -225,4 +225,4 @@ A roadmap phase is complete only when:
 
 A roadmap is complete only when every track is reconciled, the final validation phase is closed, and the roadmap mirror tells one consistent story.
 
-This adaptation favors truthful, resumable execution over a mechanical port of Claude-only orchestration machinery.
+This adaptation favors truthful, resumable execution over a mechanical port of source-runtime orchestration machinery.

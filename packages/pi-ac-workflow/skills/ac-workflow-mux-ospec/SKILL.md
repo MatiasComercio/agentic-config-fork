@@ -67,7 +67,7 @@ uv run ../../assets/mux/tools/session.py --strict-runtime --session-key <key> "m
 <spec-stages>/008-phase_close.md
 ```
 
-## Runtime differences from the original Claude workflow
+## Runtime differences from the source workflow
 
 Assume all of the following:
 - no nested `Skill(...)` or `/skill:` loading inside workers
@@ -225,4 +225,4 @@ A phase is complete only when:
 - tests and validation are recorded honestly
 - the next exact action is explicit
 
-This skill is intentionally honest about current runtime limits. It preserves the spec-owned stage discipline without pretending that pi has Claude-only nested skill execution or task-notification semantics.
+This skill is intentionally honest about current runtime limits. It preserves the spec-owned stage discipline without pretending that pi has non-pi nested skill execution or task-notification semantics.

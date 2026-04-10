@@ -39,7 +39,7 @@ uv run {{MUX_ROOT}}/tools/session.py --strict-runtime --session-key <key> "<topi
 
 ## pi runtime contract
 
-This is not a mechanical Claude MUX clone.
+This is not a mechanical port of the source MUX prompt.
 
 Assume all of the following are true:
 - the runtime gives you synchronous `subagent` calls, not task notifications
@@ -188,4 +188,4 @@ When the orchestration is done:
 uv run {{MUX_ROOT}}/tools/deactivate.py --session-key <key>
 ```
 
-The goal is not to imitate Claude-only hooks or task notifications. The goal is to preserve the useful MUX behavior honestly on top of the shared pi mux foundation.
+The goal is not to imitate non-pi hooks or task notifications. The goal is to preserve the useful MUX behavior honestly on top of the shared pi mux foundation.

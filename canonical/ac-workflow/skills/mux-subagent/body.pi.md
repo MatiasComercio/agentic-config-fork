@@ -13,9 +13,9 @@ Companion protocol artifacts:
 - `{{MUX_ROOT}}/protocol/strict-blocker-path-transcript.md`
 - `{{MUX_ROOT}}/protocol/strict-regression-checklist.md`
 
-## Runtime Differences From Claude
+## Runtime Differences From the Source Runtime
 
-- There is no Claude-style `TaskOutput` tool in current pi runtime.
+- There is no `TaskOutput` tool in current pi runtime.
 - There is no nested `Skill(...)` loader inside a pi worker.
 - Worker depth stays at one layer: coordinator -> subagent.
 - Completion is verified through report/signal artifacts plus summary evidence gating.

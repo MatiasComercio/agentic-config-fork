@@ -1,6 +1,6 @@
 ---
 name: ac-meta-skill-writer
-description: "Expert assistant for authoring Claude Code skills. Creates SKILL.md files with proper YAML frontmatter, validates naming conventions, enforces tool minimalism, and applies official best practices. Triggers on keywords: writing skills, creating skills, skill authoring, SKILL.md, new skill, skill template, skill validation, skill structure, create skill, update skill"
+description: "Expert assistant for authoring SKILL.md skills. Creates SKILL.md files with proper YAML frontmatter, validates naming conventions, enforces tool minimalism, and applies official best practices. Triggers on keywords: writing skills, creating skills, skill authoring, SKILL.md, new skill, skill template, skill validation, skill structure, create skill, update skill"
 project-agnostic: true
 allowed-tools:
   - Read
@@ -12,15 +12,15 @@ allowed-tools:
 
 # Skill Writer
 
-Expert guide for creating Claude Code skills. Reference: https://code.claude.com/docs/en/skills
+Expert guide for creating SKILL.md skills.
 
 ## Compatibility Note
 
-This pi wrapper preserves the original Claude Code skill authoring target. The wrapper only adapts invocation to pi; it does not retarget the generated skill format.
+This pi wrapper preserves the original skill authoring target. The wrapper only adapts invocation to pi; it does not retarget the generated skill format.
 
 ## Purpose
 
-Generate precise SKILL.md files that comply with Claude Code skill specification:
+Generate precise SKILL.md files that comply with the target skill specification:
 - Validate naming constraints (64 chars, lowercase/numbers/hyphens only, no reserved words)
 - Enforce description requirements (1024 chars max, third person, trigger keywords)
 - Apply tool minimalism (only grant necessary tools)

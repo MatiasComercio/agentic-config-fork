@@ -4,7 +4,7 @@ This tree is the shared mux runtime substrate for canonical `ac-workflow` mux su
 
 ## Purpose
 - keep session/signal/report helpers in one package-owned location
-- give pi and Claude mux surfaces one stable asset root
+- give all generated mux surfaces one stable asset root
 - let later mux orchestrators consume shared protocol docs instead of inventing local copies
 
 ## Layout

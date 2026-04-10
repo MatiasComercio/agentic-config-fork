@@ -40,7 +40,7 @@ uv run ../../assets/mux/tools/signal.py <signal-path> --path <report-path> --sta
 ```
 
 ## Runtime note
-The current pi runtime does not provide Claude-style `TaskOutput` or nested `Skill(...)` loading inside a worker. Parent mux coordinators must pass this protocol inline or reference this bundled artifact path directly.
+The current pi runtime does not provide a `TaskOutput` tool or nested `Skill(...)` loading inside a worker. Parent mux coordinators must pass this protocol inline or reference this bundled artifact path directly.
 
 ## Pre-return checklist
 Before returning `0`, verify:

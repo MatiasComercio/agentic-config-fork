@@ -1,6 +1,6 @@
 # Skill Template
 
-Comprehensive template for creating new Claude Code skills.
+Comprehensive template for creating new SKILL.md skills.
 
 ## YAML Frontmatter
 

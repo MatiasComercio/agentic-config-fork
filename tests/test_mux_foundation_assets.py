@@ -354,7 +354,7 @@ def test_generated_pi_mux_orchestrators_reference_shared_foundation() -> None:
     assert "Roadmap `## Implementation Progress` section = cross-phase mirror." in mux_roadmap_text
     assert "Do not invent a separate `CONTINUE.md` by default" in mux_roadmap_text
     assert "one worker layer only: coordinator -> subagent" in mux_roadmap_text
-    assert "does not recreate the original Claude-only `start` / `continue` / `--wait-after-plan` bootstrap surface" in mux_roadmap_text
+    assert "does not recreate the original source-runtime `start` / `continue` / `--wait-after-plan` bootstrap surface" in mux_roadmap_text
     assert "--strict-runtime --session-key <key>" in mux_roadmap_text
     assert "control-plane" in mux_roadmap_text
     assert "data-plane" in mux_roadmap_text
