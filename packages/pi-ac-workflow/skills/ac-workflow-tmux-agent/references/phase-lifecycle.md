@@ -20,6 +20,7 @@ This is usually better than keeping one broad worker alive across many different
 - default to **headless**
 - use `notificationMode: "notify-and-follow-up"` when phase chaining matters
 - treat `notificationMode: "notify-and-follow-up"` as the settled end-of-session handoff for the child after explicit terminal declaration plus child exit, not as a stage-level or per-turn milestone
+- local helper or ordinary subagent completion inside a tmux-agent is local input only; do not emit `closeout` until the tmux-agent itself has consolidated that work and is ready to stop
 - use `open_visual` only when the user explicitly wants live inspection or the running agent is worth monitoring
 - keep one clear mission per agent
 
@@ -99,7 +100,7 @@ When a phase completes:
 7. kill the finished agent promptly
 8. launch the next phase
 
-The parent should not proceed because of intermediate capture noise, a stage subagent result, or a partial artifact. Proceed only after settled tmux state is explicit and verified.
+The parent should not proceed because of intermediate capture noise, a stage subagent result, a local helper completion, or a partial artifact. Proceed only after settled tmux state is explicit and verified.
 
 ## Protocol violation handling
 
@@ -109,7 +110,7 @@ If an agent appears done but failed to emit a valid terminal declaration (`close
 2. capture enough terminal evidence to justify your decision
 3. document the protocol violation in the plan/status document
 4. only continue if the completion state is unambiguous or the human explicitly instructs you to proceed
-5. strengthen the next phase prompt with an explicit requirement not to stop without valid terminal declaration and not to emit `closeout` before the ENTIRE phase work is complete
+5. strengthen the next phase prompt with an explicit requirement not to stop without valid terminal declaration, not to treat local helper completion as final completion, and not to emit `closeout` before the ENTIRE phase work is complete
 
 ## Important anti-patterns
 

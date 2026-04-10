@@ -113,6 +113,7 @@ When using `send_message`:
 
 When using `report_parent` from a child session:
 
+- only the authoritative direct tmux-agent child for that bridge may call it; local helper or ordinary subagent sessions inside that tmux-agent are local-only
 - set `reportKind` to `question`, `blocker`, `progress`, `failure`, or `closeout`
 - use `closeout` exactly once when the task is complete; success settles only after child exit
 - set a concise bounded `summary`
@@ -158,7 +159,7 @@ Use:
 - `tree` to inspect hierarchy
 - `peer_list` to inspect peer modes under one root
 
-If a completion or failure artifact looks suspicious, compare it against `status` and `capture` before deciding to kill, relaunch, or report failure. Quiet panes and observer noise are non-authoritative compared with settled bridge state.
+If a completion or failure artifact looks suspicious, compare it against `status` and `capture` before deciding to kill, relaunch, or report failure. Quiet panes, observer noise, and local helper completion are non-authoritative compared with settled bridge state.
 
 ## Cleanup guidance
 

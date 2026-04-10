@@ -45,9 +45,11 @@ Prefer normal short-lived subagents when the work is brief and does not need its
 - Do not let a child stop on a stage subagent result or intermediate turn summary.
 - Use `send_message` for downward or lateral instructions rather than inventing unmanaged channels.
 - Use the built-in private launch bridge and bounded report flow for upward child-to-parent reporting.
+- Each bridge belongs to exactly one authoritative direct tmux-agent child session. Ordinary local helpers or subagents inside that child are local-only and must not use `report_parent` or be treated as settled completion.
 - Child success requires explicit `report_parent` with `reportKind: closeout`, then child exit; success is never inferred from quiet time, capture noise, or last-turn text.
 - `report_parent` kinds are `question | blocker | progress | failure | closeout`.
 - `progress` is non-terminal and non-follow-up by default; it should inform the parent, not settle the run.
+- Bubbling is one hop at a time in nested tmux hierarchies: a chief waits for heads, a head waits for doers, and local helper or subagent completion stays inside the supervising tmux-agent.
 - If a child needs input before finishing, use `report_parent` with `reportKind: question` or `blocker`, a bounded summary, and `requiresResponse: true` when the parent must answer.
 - If a child exits without `closeout` or an explicit non-success terminal declaration, treat it as `protocol_violation` and verify with `status` and `capture` before acting.
 - Treat `close_visual` as best-effort; treat `kill` as the authoritative cleanup step.

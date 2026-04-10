@@ -65,6 +65,8 @@ Upward reports should usually contain:
 - Success requires explicit `report_parent` with `reportKind: closeout`, then child exit.
 - Explicit non-success terminal declarations are `failure`, `blocker`, and exited `question`.
 - `progress` is non-terminal and non-follow-up by default.
+- Only the authoritative direct child for a bridge may emit terminal declarations or the authoritative exit signal for that bridge.
+- Local helper or ordinary subagent completion inside a tmux-agent stays local to that tmux-agent and must not be treated as parent-visible settlement.
 - Exit without valid terminal declaration settles as `protocol_violation`.
 - Supervisors should verify settled state with `status` before phase chaining.
 
@@ -106,6 +108,7 @@ Avoid:
 - combining implementation, remediation, and QA in one large agent when correctness matters
 - trusting one completion or failure artifact without checking settled bridge state
 - inferring success from quiet sessions, observer capture, or last-turn text
+- treating a local helper or subagent result as if the supervising tmux-agent had completed
 - letting an agent stop without explicit `closeout` or a declared non-success terminal path
 - leaving finished phase agents alive after their output has already been harvested
 

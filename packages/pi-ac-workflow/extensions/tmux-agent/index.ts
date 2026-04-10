@@ -8,6 +8,13 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import {
+	bindBridgeAuthoritativeSession,
+	evaluateBridgeAuthority,
+	hasBoundBridgeAuthority,
+	type BridgeAuthorityBinding,
+	type BridgeRuntimeSessionIdentity,
+} from "./bridge-authority-runtime";
+import {
 	evaluateBridgeSettlement,
 	shouldDeliverBridgeEventToParent,
 	shouldTriggerTurnForEvent,
@@ -219,7 +226,20 @@ interface BridgeParentState {
 
 interface BridgeChildState {
 	reportCount: number;
+	authoritativeSessionKey?: string;
+	authoritativeSessionFile?: string;
+	authoritativeLeafId?: string;
+	authoritativeProcessId?: number;
+	authoritativeBoundAt?: string;
+	lastAuthoritativeSeenAt?: string;
 	updatedAt?: string;
+}
+
+interface BridgeAuthorityResolution {
+	childState: BridgeChildState;
+	currentSession: BridgeRuntimeSessionIdentity;
+	isAuthoritative: boolean;
+	reason?: string;
 }
 
 interface BridgeEvent {
@@ -1067,6 +1087,91 @@ async function writeBridgeChildState(bridgeDir: string, state: BridgeChildState)
 	await writeJsonFileAtomic(getBridgeChildStatePath(bridgeDir), state);
 }
 
+function getCurrentBridgeSessionIdentity(ctx: ExtensionContext): BridgeRuntimeSessionIdentity {
+	return {
+		sessionFile: ctx.sessionManager.getSessionFile() ?? undefined,
+		sessionKey: getSessionKey(ctx),
+		leafId: ctx.sessionManager.getLeafId() ?? undefined,
+		processId: process.pid,
+	};
+}
+
+function getBridgeAuthorityBinding(state: BridgeChildState): BridgeAuthorityBinding {
+	return {
+		authoritativeSessionKey: state.authoritativeSessionKey,
+		authoritativeSessionFile: state.authoritativeSessionFile,
+		authoritativeLeafId: state.authoritativeLeafId,
+		authoritativeProcessId: state.authoritativeProcessId,
+	};
+}
+
+function applyBridgeAuthorityBinding(state: BridgeChildState, binding: BridgeAuthorityBinding): boolean {
+	let changed = false;
+	if (!state.authoritativeSessionKey && binding.authoritativeSessionKey) {
+		state.authoritativeSessionKey = binding.authoritativeSessionKey;
+		changed = true;
+	}
+	if (!state.authoritativeSessionFile && binding.authoritativeSessionFile) {
+		state.authoritativeSessionFile = binding.authoritativeSessionFile;
+		changed = true;
+	}
+	if (!state.authoritativeLeafId && binding.authoritativeLeafId) {
+		state.authoritativeLeafId = binding.authoritativeLeafId;
+		changed = true;
+	}
+	if (state.authoritativeProcessId === undefined && binding.authoritativeProcessId !== undefined) {
+		state.authoritativeProcessId = binding.authoritativeProcessId;
+		changed = true;
+	}
+	return changed;
+}
+
+async function resolveBridgeAuthority(bridgeDir: string, ctx: ExtensionContext, options: { bindIfMissing?: boolean } = {}): Promise<BridgeAuthorityResolution> {
+	const childState = await readBridgeChildState(bridgeDir);
+	const currentSession = getCurrentBridgeSessionIdentity(ctx);
+	const existingBinding = getBridgeAuthorityBinding(childState);
+	if (!hasBoundBridgeAuthority(existingBinding)) {
+		if (!options.bindIfMissing) {
+			return {
+				childState,
+				currentSession,
+				isAuthoritative: false,
+				reason: "No authoritative tmux-agent child session has been bound to this bridge yet.",
+			};
+		}
+		applyBridgeAuthorityBinding(childState, bindBridgeAuthoritativeSession(currentSession));
+		const boundAt = nowIso();
+		childState.authoritativeBoundAt = boundAt;
+		childState.lastAuthoritativeSeenAt = boundAt;
+		await writeBridgeChildState(bridgeDir, childState);
+		return {
+			childState,
+			currentSession,
+			isAuthoritative: true,
+		};
+	}
+
+	const evaluation = evaluateBridgeAuthority(existingBinding, currentSession);
+	if (evaluation.isAuthoritative) {
+		const strengthenedBinding = bindBridgeAuthoritativeSession(currentSession);
+		const changed = applyBridgeAuthorityBinding(childState, strengthenedBinding);
+		const seenAt = nowIso();
+		if (childState.lastAuthoritativeSeenAt !== seenAt) {
+			childState.lastAuthoritativeSeenAt = seenAt;
+			await writeBridgeChildState(bridgeDir, childState);
+		} else if (changed) {
+			await writeBridgeChildState(bridgeDir, childState);
+		}
+	}
+
+	return {
+		childState,
+		currentSession,
+		isAuthoritative: evaluation.isAuthoritative,
+		reason: evaluation.reason,
+	};
+}
+
 async function nextBridgeReportNumber(bridgeDir: string): Promise<number> {
 	const state = await readBridgeChildState(bridgeDir);
 	state.reportCount += 1;
@@ -1084,6 +1189,10 @@ function buildChildProtocol(launch: BridgeLaunchFile): string {
 		"- Keep your final answer concise and decision-oriented.",
 		"",
 		"Do not emit success implicitly. Success settles only after an explicit closeout declaration plus child exit.",
+		"Only this tmux-agent session owns this bridge.",
+		"If you launch ordinary helpers or subagents inside this tmux-agent session, they are local-only.",
+		"Their completion does not report to the parent and does not justify closeout by itself.",
+		"Emit closeout only after this tmux-agent session has consolidated all local helper work and is itself ready to stop.",
 		"",
 		"When you are ready to stop this child session after completing the ENTIRE task:",
 		"1) Call tmux_agent report_parent with reportKind: closeout and a bounded summary (plus reportMarkdown when needed).",
@@ -2101,10 +2210,16 @@ async function sendManagedMessage(request: SendMessageRequest): Promise<ManagedA
 	return agent;
 }
 
-async function reportParent(request: ReportParentRequest): Promise<{ bridgeDir: string; event: BridgeEvent }> {
+async function reportParent(request: ReportParentRequest, ctx: ExtensionContext): Promise<{ bridgeDir: string; event: BridgeEvent }> {
 	const currentEnv = getCurrentAgentEnv();
 	if (!currentEnv.bridgeDir || !currentEnv.launchId || !currentEnv.agentId) {
 		throw new Error("report_parent requires a tmux-agent child launch bridge");
+	}
+	const authority = await resolveBridgeAuthority(currentEnv.bridgeDir, ctx, { bindIfMissing: true });
+	if (!authority.isAuthoritative) {
+		throw new Error(
+			`report_parent is reserved for the authoritative tmux-agent session. Local helpers or nested subagents must report back only to their supervising tmux-agent. ${authority.reason ?? ""}`.trim(),
+		);
 	}
 	const launch = await readBridgeLaunch(currentEnv.bridgeDir);
 	let reportPath: string | undefined;
@@ -2812,9 +2927,14 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 
 	const reconcileDebateWatchers = async (ctx: ExtensionContext) => {
 		const currentEnv = getCurrentAgentEnv();
+		const bridgeAuthority =
+			currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId
+				? await resolveBridgeAuthority(currentEnv.bridgeDir, ctx)
+				: undefined;
+		const isBridgeAuthoritative = !currentEnv.bridgeDir || bridgeAuthority?.isAuthoritative === true;
 		const desiredDebates = new Set<string>();
 		const desiredRoots = new Set<string>();
-		if (currentEnv.agentId && currentEnv.rootDir) {
+		if (currentEnv.agentId && currentEnv.rootDir && isBridgeAuthoritative) {
 			desiredRoots.add(currentEnv.rootDir);
 			await subscribeRoot(currentEnv.rootDir, ctx);
 			const debates = await listRelevantDebatesForAgent(currentEnv.rootDir, currentEnv.agentId);
@@ -3031,7 +3151,12 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		await ensureStateDirs();
 		const currentEnv = getCurrentAgentEnv();
-		if (currentEnv.agentId) {
+		const bridgeAuthority =
+			currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId
+				? await resolveBridgeAuthority(currentEnv.bridgeDir, ctx, { bindIfMissing: true })
+				: undefined;
+		const isBridgeAuthoritative = !currentEnv.bridgeDir || bridgeAuthority?.isAuthoritative === true;
+		if (currentEnv.agentId && isBridgeAuthoritative) {
 			pi.setSessionName(currentEnv.role ? `${currentEnv.role}: ${currentEnv.agentId}` : currentEnv.agentId);
 			ctx.ui.setStatus(EXTENSION_NAME, `agent:${currentEnv.agentId}${currentEnv.role ? ` role:${currentEnv.role}` : ""}`);
 			const updatedRegistry = await updateRegistry((registry) => {
@@ -3050,7 +3175,7 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 			const existing = updatedRegistry.agents.find((agent) => agent.agentId === currentEnv.agentId);
 			if (existing?.rootDir) await syncRootAgentState(existing);
 		}
-		if (currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId) {
+		if (currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId && bridgeAuthority?.isAuthoritative) {
 			const launch = await readBridgeLaunch(currentEnv.bridgeDir);
 			const launchedEvent = await appendBridgeEvent(currentEnv.bridgeDir, {
 				launchId: currentEnv.launchId,
@@ -3084,9 +3209,11 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 		await reconcileDebateWatchers(ctx);
 	});
 
-	pi.on("before_agent_start", async (event, _ctx) => {
+	pi.on("before_agent_start", async (event, ctx) => {
 		const currentEnv = getCurrentAgentEnv();
 		if (!currentEnv.bridgeDir) return;
+		const bridgeAuthority = await resolveBridgeAuthority(currentEnv.bridgeDir, ctx);
+		if (!bridgeAuthority.isAuthoritative) return;
 		const protocolPath = path.join(currentEnv.bridgeDir, "child", "protocol.md");
 		const protocol = await fs.readFile(protocolPath, "utf-8").catch(() => undefined);
 		if (!protocol?.trim()) return;
@@ -3095,9 +3222,14 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 		};
 	});
 
-	pi.on("session_shutdown", async (_event, _ctx) => {
+	pi.on("session_shutdown", async (_event, ctx) => {
 		const currentEnv = getCurrentAgentEnv();
-		if (currentEnv.agentId) {
+		const bridgeAuthority =
+			currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId
+				? await resolveBridgeAuthority(currentEnv.bridgeDir, ctx)
+				: undefined;
+		const isBridgeAuthoritative = !currentEnv.bridgeDir || bridgeAuthority?.isAuthoritative === true;
+		if (currentEnv.agentId && isBridgeAuthoritative) {
 			await updateRegistry((registry) => {
 				const existing = registry.agents.find((agent) => agent.agentId === currentEnv.agentId);
 				if (existing && existing.status !== "terminated") {
@@ -3107,7 +3239,7 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 			});
 			await updateRootAgentLifecycleState(currentEnv.rootDir, currentEnv.agentId, { status: "exited" });
 		}
-		if (currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId) {
+		if (currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId && bridgeAuthority?.isAuthoritative) {
 			const launch = await readBridgeLaunch(currentEnv.bridgeDir);
 			const eventRecord = await appendBridgeEvent(currentEnv.bridgeDir, {
 				launchId: currentEnv.launchId,
@@ -3164,7 +3296,7 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 			"When opening a visual, open a background tab in the current iTerm window without stealing focus when possible.",
 			"For spawn, only set advanced fields like role, agentId, parentAgentId, rootAgentId, notificationMode, and contextBrief when the task really needs them; otherwise rely on defaults.",
 			"When building hierarchies, set role, parentAgentId, and rootAgentId deliberately so the org tree stays understandable.",
-			"Use report_parent from a child session for blocker/question/progress/failure updates, and emit exactly one closeout when the task is complete. Success settles only after closeout plus child exit.",
+			"Use report_parent only from the authoritative direct tmux-agent child session for blocker/question/progress/failure updates, and emit exactly one closeout when the task is complete. Local helper subagents are local-only and do not settle the parent bridge. Success settles only after closeout plus child exit.",
 			"Use debate_start, debate_send, and debate_close only for explicit peer collaboration. Default peer behavior should remain isolated unless the user asks for cross-peer discussion.",
 		],
 		parameters: TMUX_AGENT_PARAMS,
@@ -3242,12 +3374,15 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 					case "report_parent": {
 						if (!params.reportKind) throw new Error("report_parent requires reportKind");
 						if (!params.summary?.trim()) throw new Error("report_parent requires summary");
-						const result = await reportParent({
-							kind: params.reportKind,
-							summary: params.summary,
-							reportMarkdown: params.reportMarkdown,
-							requiresResponse: params.requiresResponse,
-						});
+						const result = await reportParent(
+							{
+								kind: params.reportKind,
+								summary: params.summary,
+								reportMarkdown: params.reportMarkdown,
+								requiresResponse: params.requiresResponse,
+							},
+							ctx,
+						);
 						return buildToolResult(`Reported ${params.reportKind} to parent.`, { action: params.action, event: result.event, bridgeDir: result.bridgeDir });
 					}
 					case "debate_start": {
