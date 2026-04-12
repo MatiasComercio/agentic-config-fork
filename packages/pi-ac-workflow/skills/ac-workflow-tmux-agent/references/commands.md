@@ -13,6 +13,8 @@ Use `/tmux-agent` with one of these subcommands:
 - `send`
 - `kill`
 - `tree`
+- `navigate`
+- `prune`
 - `debate start|send|close`
 - `peer-mode`
 - `peer-list`
@@ -80,6 +82,7 @@ Use the `tmux_agent` tool for deterministic orchestration.
 - `capture`
 - `kill`
 - `tree`
+- `prune`
 - `report_parent`
 - `debate_start`
 - `debate_send`
@@ -114,6 +117,7 @@ When using `send_message`:
 When using `report_parent` from a child session:
 
 - only the authoritative direct tmux-agent child for that bridge may call it; local helper or ordinary subagent sessions inside that tmux-agent are local-only
+- if you are an orchestrator with direct tmux children, do not use `closeout` until every direct child is `settled_completion`
 - set `reportKind` to `question`, `blocker`, `progress`, `failure`, or `closeout`
 - use `closeout` exactly once when the task is complete; success settles only after child exit
 - set a concise bounded `summary`
@@ -153,15 +157,25 @@ When using `peer_mode_set`:
 
 Use:
 
-- `list` to see all managed agents
+- `list` to see the agents managed in the current session by default; add `--all` for global visibility and `--include-exited` for historical noise
 - `status` for one agent plus a short capture preview and bridge settlement state (`running`, `settled_completion`, `settled_failure`, `settled_blocked`, `settled_waiting_on_parent`, `protocol_violation`)
 - `capture` for a larger pane snapshot
-- `tree` to inspect hierarchy
+- `tree` to inspect the current-session hierarchy by default; add `--all` when you truly need the full registry
+- `navigate` to select a node from the current tree and then open, status, capture, send, or kill it
+- `prune` to preview candidates with `--dry-run`, show an exact confirmation list in UI mode, archive old entries to the registry archive, and remove them from the active registry
+- the extension auto-prunes entries whose effective state is missing or terminated and whose age is at least `1d`
 - `peer_list` to inspect peer modes under one root
 
 If a completion or failure artifact looks suspicious, compare it against `status` and `capture` before deciding to kill, relaunch, or report failure. Quiet panes, observer noise, and local helper completion are non-authoritative compared with settled bridge state.
 
 ## Cleanup guidance
+
+Prune examples:
+
+```text
+/tmux-agent prune --dry-run
+/tmux-agent prune --older-than 7d --all
+```
 
 When the user says to kill them all using `tmux-agent`:
 

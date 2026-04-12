@@ -48,12 +48,14 @@ const stateDir = path.join(getAgentDir(), "state", EXTENSION_NAME);
 const runsDir = path.join(stateDir, "runs");
 const logsDir = path.join(stateDir, "logs");
 const registryPath = path.join(stateDir, "registry.json");
+const registryArchivePath = path.join(stateDir, "registry.archive.jsonl");
 const messageAuditPath = path.join(stateDir, "messages.jsonl");
 
 type AgentStatus = "running" | "exited" | "missing" | "terminated";
 type VisualMode = "headless" | "iterm-opened";
 type NotificationMode = "notify" | "notify-and-follow-up" | "silent";
 type PeerMode = "alone" | "all" | "subset" | "direct";
+type AgentScope = "session" | "root" | "all";
 type DebateMirrorMode = "none" | "summary-only" | "full-events";
 type DebateStatus = "open" | "closed";
 type BridgeEventDirection = "system" | "parent_to_child" | "child_to_parent";
@@ -381,6 +383,27 @@ interface PeerListEntry {
 	peerParticipants: string[];
 }
 
+interface AgentQueryOptions {
+	scope?: AgentScope;
+	rootAgentId?: string;
+	includeExited?: boolean;
+}
+
+interface AgentTreeNode {
+	agentId: string;
+	sessionName: string;
+	parentAgentId?: string;
+	rootAgentId: string;
+	depth: number;
+	effectiveStatus: AgentStatus;
+	bridgeSettlementState: BridgeSettlementState;
+	visualMode: VisualMode;
+	openCount: number;
+	role?: string;
+	goal?: string;
+	children: AgentTreeNode[];
+}
+
 const TMUX_AGENT_PARAMS = Type.Object({
 	action: StringEnum([
 		"spawn",
@@ -392,6 +415,7 @@ const TMUX_AGENT_PARAMS = Type.Object({
 		"capture",
 		"kill",
 		"tree",
+		"prune",
 		"report_parent",
 		"debate_start",
 		"debate_send",
@@ -419,7 +443,10 @@ const TMUX_AGENT_PARAMS = Type.Object({
 	lines: Type.Optional(Type.Number({ description: "Number of pane lines to capture" })),
 	message: Type.Optional(Type.String({ description: "Message to send to another managed agent" })),
 	senderAgentId: Type.Optional(Type.String({ description: "Override sender agent ID when sending a message" })),
-	includeExited: Type.Optional(Type.Boolean({ description: "Include exited or terminated agents when listing" })),
+	scope: Type.Optional(StringEnum(["session", "root", "all"] as const)),
+	olderThan: Type.Optional(Type.String({ description: "Age threshold for prune, e.g. 0s, 1h, 7d" })),
+	dryRun: Type.Optional(Type.Boolean({ description: "Preview prune candidates without archiving/removing them" })),
+	includeExited: Type.Optional(Type.Boolean({ description: "Include exited, missing, or terminated agents in list/tree results" })),
 	reportKind: Type.Optional(StringEnum(["question", "blocker", "progress", "failure", "closeout"] as const)),
 	summary: Type.Optional(Type.String({ description: "Short structured summary for report_parent" })),
 	reportMarkdown: Type.Optional(Type.String({ description: "Optional markdown artifact body for report_parent" })),
@@ -511,12 +538,14 @@ function buildUsage(): string {
 		"  /tmux-agent spawn --advanced [--agent-id ID] [--role ROLE] [--goal TEXT] [--parent ID] [--root ID] <prompt>",
 		"  /tmux-agent open [target|last]",
 		"  /tmux-agent close [target|last]",
-		"  /tmux-agent list",
+		"  /tmux-agent list [--include-exited] [--root ID] [--all]",
 		"  /tmux-agent status [target|last]",
 		"  /tmux-agent capture [target|last] [--lines N]",
 		"  /tmux-agent send [target|last] <message>",
 		"  /tmux-agent kill [target|last]",
-		"  /tmux-agent tree",
+		"  /tmux-agent tree [--include-exited] [--root ID] [--all]",
+		"  /tmux-agent navigate [--include-exited] [--root ID] [--all]",
+		"  /tmux-agent prune [--dry-run] [--older-than 7d] [--root ID] [--all]",
 		"  /tmux-agent debate start [--id ID] [--all|--subset|--direct|--alone] [--participants a,b] [topic]",
 		"  /tmux-agent debate send <debate-id> <message>",
 		"  /tmux-agent debate close <debate-id> [summary]",
@@ -526,6 +555,8 @@ function buildUsage(): string {
 		"Defaults:",
 		"  spawn auto-uses the current cwd and current model, infers role/goal from the prompt,",
 		"  creates a private launch bridge for bounded parent-child reporting, and notifies the launching session when the child completes.",
+		"  list/tree/navigate default to the current session hierarchy and hide exited historical agents unless --include-exited or --all is provided.",
+		"  prune supports dry-run preview plus UI confirmation, archives exited/terminated/missing registry entries, and removes them from the active registry; default scope is the current session hierarchy.",
 	].join("\n");
 }
 
@@ -685,6 +716,39 @@ function inferRequiresResponse(parsed: ParsedArgs, fallback = false): boolean {
 	if (hasFlag(parsed, "requires-response", "require-response", "ask-response")) return true;
 	if (hasFlag(parsed, "no-response", "no-follow-up")) return false;
 	return fallback;
+}
+
+function inferAgentScope(value: string | undefined, fallback: AgentScope = "session"): AgentScope {
+	if (!value) return fallback;
+	if (value === "session" || value === "root" || value === "all") return value;
+	throw new Error(`Invalid tmux-agent scope: ${value}`);
+}
+
+function inferAgentQueryOptions(parsed: ParsedArgs): AgentQueryOptions {
+	const rootAgentId = getStringFlag(parsed, "root");
+	return {
+		scope: hasFlag(parsed, "all") ? "all" : rootAgentId ? "root" : "session",
+		rootAgentId,
+		includeExited: hasFlag(parsed, "include-exited"),
+	};
+}
+
+function parseAgeThresholdMs(value: string | undefined, fallback = "0s"): number {
+	const normalized = normalizeOptional(value) ?? fallback;
+	const match = normalized.match(/^(\d+)([smhdw])$/);
+	if (!match) throw new Error(`Invalid olderThan threshold: ${normalized}. Use values like 0s, 30m, 12h, or 7d.`);
+	const amount = Number(match[1]);
+	const unit = match[2];
+	const multiplier = unit === "s" ? 1000 : unit === "m" ? 60_000 : unit === "h" ? 3_600_000 : unit === "d" ? 86_400_000 : 604_800_000;
+	return amount * multiplier;
+}
+
+function inferDryRun(parsed: ParsedArgs): boolean {
+	return hasFlag(parsed, "dry-run", "preview");
+}
+
+function isSettledCompletionState(state: BridgeSettlementState | undefined): boolean {
+	return state === "settled_completion";
 }
 
 function inferRoleFromPrompt(prompt: string): string | undefined {
@@ -1190,9 +1254,15 @@ function buildChildProtocol(launch: BridgeLaunchFile): string {
 		"",
 		"Do not emit success implicitly. Success settles only after an explicit closeout declaration plus child exit.",
 		"Only this tmux-agent session owns this bridge.",
+		"If you are acting as an orchestrator, you own the control-plane for your subtree.",
 		"If you launch ordinary helpers or subagents inside this tmux-agent session, they are local-only.",
+		"You must explicitly tell local helpers not to call tmux_agent or report_parent.",
 		"Their completion does not report to the parent and does not justify closeout by itself.",
-		"Emit closeout only after this tmux-agent session has consolidated all local helper work and is itself ready to stop.",
+		"Do not retry a spawn when the requested tmux child already exists.",
+		"Do not send repeated impatient nudges. Wait for explicit child reports or a bounded timeout before intervening.",
+		"Do not treat capture noise, helper output, or partial artifacts as completion.",
+		"If you spawned tmux children, verify their status before consolidating upward.",
+		"Emit closeout only after this tmux-agent session has consolidated all local helper work, all direct tmux children are settled, and this session is itself ready to stop.",
 		"",
 		"When you are ready to stop this child session after completing the ENTIRE task:",
 		"1) Call tmux_agent report_parent with reportKind: closeout and a bounded summary (plus reportMarkdown when needed).",
@@ -1829,30 +1899,79 @@ function formatAgentDetails(status: ResolvedStatus): string[] {
 	].filter((line): line is string => Boolean(line));
 }
 
-function buildTreeLines(registry: RegistryFile, statuses: ResolvedStatus[]): string[] {
-	const byId = new Map(registry.agents.map((agent) => [agent.agentId, agent]));
-	const statusById = new Map(statuses.map((item) => [item.record.agentId, item]));
-	const children = new Map<string, ManagedAgentRecord[]>();
-	for (const agent of registry.agents) {
-		if (!agent.parentAgentId) continue;
-		const bucket = children.get(agent.parentAgentId) ?? [];
-		bucket.push(agent);
-		children.set(agent.parentAgentId, bucket);
+function resolveSessionScopedRootAgentIds(ctx: ExtensionContext, registry: RegistryFile, currentEnv: CurrentAgentEnv): string[] {
+	const rootAgentIds = new Set<string>();
+	for (const entry of getSessionBridgeEntries(ctx)) {
+		const record = registry.agents.find((agent) => agent.launchId === entry.launchId || agent.agentId === entry.agentId || agent.bridgeDir === entry.bridgeDir);
+		if (record?.rootAgentId) rootAgentIds.add(record.rootAgentId);
 	}
-	const roots = registry.agents.filter((agent) => !agent.parentAgentId || !byId.has(agent.parentAgentId));
-	roots.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+	if (currentEnv.rootAgentId) rootAgentIds.add(currentEnv.rootAgentId);
+	else if (currentEnv.agentId) rootAgentIds.add(currentEnv.agentId);
+	return [...rootAgentIds];
+}
 
-	const lines: string[] = [];
-	const visit = (agent: ManagedAgentRecord, depth: number) => {
-		const status = statusById.get(agent.agentId);
-		const marker = depth === 0 ? "" : `${"  ".repeat(Math.max(0, depth - 1))}└─ `;
-		lines.push(`${marker}${agent.agentId} [${status?.effectiveStatus ?? agent.status}]${agent.role ? ` role=${agent.role}` : ""}${agent.goal ? ` goal=${truncate(agent.goal, 50)}` : ""}`);
-		const childAgents = children.get(agent.agentId) ?? [];
-		childAgents.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-		for (const child of childAgents) visit(child, depth + 1);
+function filterStatusesByScope(statuses: ResolvedStatus[], scope: AgentScope, rootAgentIds: string[]): ResolvedStatus[] {
+	if (scope === "all") return statuses;
+	if (rootAgentIds.length === 0) return [];
+	const allowedRoots = new Set(rootAgentIds);
+	return statuses.filter((status) => allowedRoots.has(status.record.rootAgentId));
+}
+
+function filterStatusesForList(statuses: ResolvedStatus[], includeExited = false): ResolvedStatus[] {
+	if (includeExited) return statuses;
+	return statuses.filter((status) => status.hasSession || status.effectiveStatus === "running");
+}
+
+function buildTreeNodes(statuses: ResolvedStatus[]): AgentTreeNode[] {
+	const statusById = new Map(statuses.map((item) => [item.record.agentId, item]));
+	const children = new Map<string, ResolvedStatus[]>();
+	for (const status of statuses) {
+		const parentAgentId = status.record.parentAgentId;
+		if (!parentAgentId) continue;
+		const bucket = children.get(parentAgentId) ?? [];
+		bucket.push(status);
+		children.set(parentAgentId, bucket);
+	}
+	const roots = statuses.filter((status) => !status.record.parentAgentId || !statusById.has(status.record.parentAgentId));
+	roots.sort((a, b) => a.record.createdAt.localeCompare(b.record.createdAt));
+
+	const visit = (status: ResolvedStatus, depth: number): AgentTreeNode => {
+		const childStatuses = children.get(status.record.agentId) ?? [];
+		childStatuses.sort((a, b) => a.record.createdAt.localeCompare(b.record.createdAt));
+		return {
+			agentId: status.record.agentId,
+			sessionName: status.record.sessionName,
+			parentAgentId: status.record.parentAgentId,
+			rootAgentId: status.record.rootAgentId,
+			depth,
+			effectiveStatus: status.effectiveStatus,
+			bridgeSettlementState: status.bridgeSettlementState ?? "running",
+			visualMode: status.record.visualMode,
+			openCount: status.record.openCount,
+			role: status.record.role,
+			goal: status.record.goal,
+			children: childStatuses.map((child) => visit(child, depth + 1)),
+		};
 	};
 
-	for (const root of roots) visit(root, 0);
+	return roots.map((root) => visit(root, 0));
+}
+
+function buildTreeLines(nodes: AgentTreeNode[]): string[] {
+	const lines: string[] = [];
+	const visit = (node: AgentTreeNode) => {
+		const marker = node.depth === 0 ? "" : `${"  ".repeat(Math.max(0, node.depth - 1))}└─ `;
+		const details = [
+			`[${node.effectiveStatus}]`,
+			node.bridgeSettlementState !== "running" ? `settled=${node.bridgeSettlementState}` : undefined,
+			node.visualMode === "iterm-opened" ? `visual=${node.visualMode}` : undefined,
+			node.role ? `role=${node.role}` : undefined,
+			node.goal ? `goal=${truncate(node.goal, 50)}` : undefined,
+		];
+		lines.push(`${marker}${node.agentId} ${details.filter(Boolean).join(" | ")}`);
+		for (const child of node.children) visit(child);
+	};
+	for (const node of nodes) visit(node);
 	if (lines.length === 0) lines.push("No managed agents recorded.");
 	return lines;
 }
@@ -2080,12 +2199,19 @@ async function openManagedAgent(target: string | undefined): Promise<ManagedAgen
 	return agent;
 }
 
-async function listManagedAgents(includeExited = true): Promise<ResolvedStatus[]> {
+async function listManagedAgents(ctx: ExtensionContext, options: AgentQueryOptions = {}): Promise<ResolvedStatus[]> {
 	const registry = await readRegistry();
+	const currentEnv = getCurrentAgentEnv();
 	const statuses = await resolveStatuses(registry);
-	statuses.sort((a, b) => (b.record.updatedAt || b.record.createdAt).localeCompare(a.record.updatedAt || a.record.createdAt));
-	if (includeExited) return statuses;
-	return statuses.filter((status) => status.effectiveStatus === "running");
+	const scope = options.scope ?? "session";
+	const scopedRootAgentIds = scope === "all"
+		? []
+		: scope === "root"
+			? uniqueStrings([normalizeOptional(options.rootAgentId) ?? currentEnv.rootAgentId ?? currentEnv.agentId].filter((value): value is string => Boolean(value)))
+			: resolveSessionScopedRootAgentIds(ctx, registry, currentEnv);
+	const filtered = filterStatusesForList(filterStatusesByScope(statuses, scope, scopedRootAgentIds), options.includeExited ?? false);
+	filtered.sort((a, b) => (b.record.updatedAt || b.record.createdAt).localeCompare(a.record.updatedAt || a.record.createdAt));
+	return filtered;
 }
 
 async function statusManagedAgent(target: string | undefined, lines = 40): Promise<{ status: ResolvedStatus; capture?: string }> {
@@ -2161,6 +2287,84 @@ async function killManagedAgent(target: string | undefined): Promise<ManagedAgen
 	return agent;
 }
 
+function resolvePruneAgeReference(status: ResolvedStatus): number | undefined {
+	const timestamp = status.record.terminatedAt ?? status.record.lastSeenAt ?? status.record.updatedAt ?? status.record.createdAt;
+	const parsed = Date.parse(timestamp);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function shouldPruneStatus(status: ResolvedStatus, mode: "manual" | "auto"): boolean {
+	if (status.record.status === "terminated") return true;
+	if (mode === "manual" && status.record.status === "exited") return true;
+	if (status.effectiveStatus !== "missing") return false;
+	if (mode === "auto" && status.record.status === "exited") return false;
+	return true;
+}
+
+function formatPruneCandidate(status: ResolvedStatus): string {
+	const ageReference = resolvePruneAgeReference(status);
+	const ageText = ageReference ? new Date(ageReference).toISOString() : "unknown-age";
+	return `${status.record.agentId} | recorded=${status.record.status} | effective=${status.effectiveStatus} | ageReference=${ageText}`;
+}
+
+async function archivePrunedAgents(statuses: ResolvedStatus[], scope: AgentScope, olderThan: string, trigger: "manual" | "auto"): Promise<void> {
+	const archivedAt = nowIso();
+	for (const status of statuses) {
+		await appendJsonLine(registryArchivePath, {
+			archivedAt,
+			reason: "prune",
+			trigger,
+			scope,
+			olderThan,
+			agent: status.record,
+			effectiveStatus: status.effectiveStatus,
+			bridgeSettlementState: status.bridgeSettlementState,
+			bridgeSettlementFinalizedAt: status.bridgeSettlementFinalizedAt,
+			bridgeProtocolViolationReason: status.bridgeProtocolViolationReason,
+		});
+		if (status.record.rootDir) {
+			await fs.unlink(getRootAgentStatePath(status.record.rootDir, status.record.agentId)).catch(() => undefined);
+		}
+	}
+}
+
+async function pruneManagedAgents(
+	ctx: ExtensionContext,
+	options: AgentQueryOptions & { olderThan?: string; dryRun?: boolean; mode?: "manual" | "auto" } = {},
+): Promise<{ candidates: ResolvedStatus[]; pruned: ResolvedStatus[]; scope: AgentScope; olderThan: string; dryRun: boolean; mode: "manual" | "auto" }> {
+	const scope = options.scope ?? "session";
+	const olderThan = normalizeOptional(options.olderThan) ?? "0s";
+	const dryRun = options.dryRun ?? false;
+	const mode = options.mode ?? "manual";
+	const thresholdMs = parseAgeThresholdMs(olderThan);
+	const now = Date.now();
+	const statuses = await listManagedAgents(ctx, { scope, rootAgentId: options.rootAgentId, includeExited: true });
+	const candidates = statuses.filter((status) => {
+		if (!shouldPruneStatus(status, mode)) return false;
+		const ageReference = resolvePruneAgeReference(status);
+		if (ageReference === undefined) return false;
+		return now - ageReference >= thresholdMs;
+	});
+	if (dryRun || candidates.length === 0) {
+		return { candidates, pruned: [], scope, olderThan, dryRun, mode };
+	}
+	await archivePrunedAgents(candidates, scope, olderThan, mode);
+	const prunedIds = new Set(candidates.map((status) => status.record.agentId));
+	await updateRegistry((next) => {
+		next.agents = next.agents.filter((entry) => !prunedIds.has(entry.agentId));
+	});
+	await appendAuditLog({
+		timestamp: nowIso(),
+		event: "prune",
+		trigger: mode,
+		scope,
+		olderThan,
+		prunedCount: candidates.length,
+		agentIds: candidates.map((status) => status.record.agentId),
+	});
+	return { candidates, pruned: candidates, scope, olderThan, dryRun, mode };
+}
+
 function formatRoutedMessage(message: string, senderAgentId: string): string {
 	return [
 		"[tmux-agent message]",
@@ -2210,6 +2414,16 @@ async function sendManagedMessage(request: SendMessageRequest): Promise<ManagedA
 	return agent;
 }
 
+async function assertDirectChildrenSettledForCloseout(agentId: string): Promise<void> {
+	const registry = await readRegistry();
+	const statuses = await resolveStatuses(registry);
+	const directChildren = statuses.filter((status) => status.record.parentAgentId === agentId);
+	const blockingChildren = directChildren.filter((status) => !isSettledCompletionState(status.bridgeSettlementState));
+	if (blockingChildren.length === 0) return;
+	const details = blockingChildren.map((status) => `${status.record.agentId} [status=${status.effectiveStatus}, settled=${status.bridgeSettlementState ?? "running"}]`).join(", ");
+	throw new Error(`Cannot close out ${agentId}: direct tmux children must be settled_completion first. Blocking children: ${details}`);
+}
+
 async function reportParent(request: ReportParentRequest, ctx: ExtensionContext): Promise<{ bridgeDir: string; event: BridgeEvent }> {
 	const currentEnv = getCurrentAgentEnv();
 	if (!currentEnv.bridgeDir || !currentEnv.launchId || !currentEnv.agentId) {
@@ -2220,6 +2434,9 @@ async function reportParent(request: ReportParentRequest, ctx: ExtensionContext)
 		throw new Error(
 			`report_parent is reserved for the authoritative tmux-agent session. Local helpers or nested subagents must report back only to their supervising tmux-agent. ${authority.reason ?? ""}`.trim(),
 		);
+	}
+	if (request.kind === "closeout") {
+		await assertDirectChildrenSettledForCloseout(currentEnv.agentId);
 	}
 	const launch = await readBridgeLaunch(currentEnv.bridgeDir);
 	let reportPath: string | undefined;
@@ -2548,17 +2765,33 @@ async function listPeerStates(target: string | undefined, rootAgentId?: string):
 	return results;
 }
 
-async function treeManagedAgents(): Promise<string[]> {
-	const registry = await readRegistry();
-	const statuses = await resolveStatuses(registry);
-	return buildTreeLines(registry, statuses);
+async function treeManagedAgents(ctx: ExtensionContext, options: AgentQueryOptions = {}): Promise<{ lines: string[]; nodes: AgentTreeNode[] }> {
+	const statuses = await listManagedAgents(ctx, options);
+	const nodes = buildTreeNodes(statuses);
+	return { lines: buildTreeLines(nodes), nodes };
+}
+
+function flattenTreeNodes(nodes: AgentTreeNode[]): Array<{ node: AgentTreeNode; label: string }> {
+	const flattened: Array<{ node: AgentTreeNode; label: string }> = [];
+	const visit = (node: AgentTreeNode) => {
+		const prefix = node.depth === 0 ? "" : `${"  ".repeat(Math.max(0, node.depth - 1))}└─ `;
+		const details = [
+			`[${node.effectiveStatus}]`,
+			node.bridgeSettlementState !== "running" ? `settled=${node.bridgeSettlementState}` : undefined,
+			node.visualMode === "iterm-opened" ? `visual=${node.visualMode}` : undefined,
+		];
+		flattened.push({ node, label: `${prefix}${node.agentId} ${details.filter(Boolean).join(" | ")}` });
+		for (const child of node.children) visit(child);
+	};
+	for (const node of nodes) visit(node);
+	return flattened;
 }
 
 async function chooseAgent(ctx: ExtensionCommandContext, title: string, onlyLive = false): Promise<ManagedAgentRecord | undefined> {
-	const statuses = await listManagedAgents(true);
+	const statuses = await listManagedAgents(ctx, { scope: "session", includeExited: false });
 	const filtered = onlyLive ? statuses.filter((status) => status.hasSession) : statuses;
 	if (filtered.length === 0) {
-		ctx.ui.notify("No managed agents available", "warning");
+		ctx.ui.notify("No managed agents available in the current session hierarchy", "warning");
 		return undefined;
 	}
 	const items = filtered.map((status) => ({ value: status.record.agentId, label: formatAgentSummary(status) }));
@@ -2566,6 +2799,50 @@ async function chooseAgent(ctx: ExtensionCommandContext, title: string, onlyLive
 	if (!choice) return undefined;
 	const selected = filtered.find((status) => formatAgentSummary(status) === choice);
 	return selected?.record;
+}
+
+async function navigateManagedTree(ctx: ExtensionCommandContext, options: AgentQueryOptions = {}): Promise<void> {
+	if (!ctx.hasUI) throw new Error("navigate requires UI");
+	const tree = await treeManagedAgents(ctx, options);
+	const flattened = flattenTreeNodes(tree.nodes);
+	if (flattened.length === 0) {
+		ctx.ui.notify("No managed agents available in the selected hierarchy", "warning");
+		return;
+	}
+	const choice = await ctx.ui.select("Navigate tmux-agent tree", flattened.map((item) => item.label));
+	if (!choice) return;
+	const selected = flattened.find((item) => item.label === choice)?.node;
+	if (!selected) return;
+	const action = await ctx.ui.select(`tmux-agent: ${selected.agentId}`, ["status", "capture", "open", "send", "kill"]);
+	if (!action) return;
+	if (action === "status") {
+		const result = await statusManagedAgent(selected.agentId, 40);
+		const lines = [...formatAgentDetails(result.status)];
+		if (result.capture) lines.push("", "capture:", ...result.capture.trimEnd().split(/\r?\n/).slice(-20));
+		await presentText(ctx, `tmux-agent status: ${selected.agentId}`, lines);
+		return;
+	}
+	if (action === "capture") {
+		const result = await captureManagedAgent(selected.agentId, DEFAULT_CAPTURE_LINES);
+		await presentText(ctx, `tmux-agent capture: ${selected.agentId}`, result.capture.trimEnd().split(/\r?\n/));
+		return;
+	}
+	if (action === "open") {
+		const record = await openManagedAgent(selected.agentId);
+		ctx.ui.notify(`Opened ${record.agentId} (${record.sessionName}) in the current iTerm window without stealing focus.`, "info");
+		return;
+	}
+	if (action === "send") {
+		const message = (await ctx.ui.editor(`tmux-agent message: ${selected.agentId}`, ""))?.trim() ?? "";
+		if (!message) return;
+		await sendManagedMessage({ target: selected.agentId, message });
+		ctx.ui.notify(`Sent message to ${selected.agentId}.`, "info");
+		return;
+	}
+	const ok = await ctx.ui.confirm("tmux-agent", `Kill ${selected.agentId}?`);
+	if (!ok) return;
+	const record = await killManagedAgent(selected.agentId);
+	ctx.ui.notify(`Killed ${record.agentId} (${record.sessionName}).`, "info");
 }
 
 async function collectSpawnRequestFromUI(parsed: ParsedArgs, ctx: ExtensionCommandContext): Promise<SpawnRequest> {
@@ -2956,7 +3233,7 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 				console.log(buildUsage());
 				return;
 			}
-			const selected = await ctx.ui.select("tmux-agent", ["spawn", "open", "close", "list", "status", "capture", "send", "kill", "tree", "debate", "peer-mode", "peer-list"]);
+			const selected = await ctx.ui.select("tmux-agent", ["spawn", "open", "close", "list", "status", "capture", "send", "kill", "tree", "navigate", "prune", "debate", "peer-mode", "peer-list"]);
 			if (!selected) return;
 			await handleCommand(selected, ctx);
 			return;
@@ -3004,9 +3281,10 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 				return;
 			}
 			case "list": {
-				const statuses = await listManagedAgents(true);
+				const options = inferAgentQueryOptions(parsed);
+				const statuses = await listManagedAgents(ctx, options);
 				const lines = statuses.length > 0 ? statuses.map(formatAgentSummary) : ["No managed agents recorded."];
-				await presentText(ctx, "Managed tmux agents", lines);
+				await presentText(ctx, options.scope === "all" ? "Managed tmux agents (all sessions)" : "Managed tmux agents (current session scope)", lines);
 				return;
 			}
 			case "status": {
@@ -3069,8 +3347,38 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 				return;
 			}
 			case "tree": {
-				const lines = await treeManagedAgents();
-				await presentText(ctx, "tmux-agent tree", lines);
+				const options = inferAgentQueryOptions(parsed);
+				const tree = await treeManagedAgents(ctx, options);
+				await presentText(ctx, options.scope === "all" ? "tmux-agent tree (all sessions)" : "tmux-agent tree (current session scope)", tree.lines);
+				return;
+			}
+			case "navigate": {
+				const options = inferAgentQueryOptions(parsed);
+				await navigateManagedTree(ctx, options);
+				return;
+			}
+			case "prune": {
+				const options = inferAgentQueryOptions(parsed);
+				const dryRun = inferDryRun(parsed);
+				const preview = await pruneManagedAgents(ctx, { ...options, olderThan: getStringFlag(parsed, "older-than"), dryRun: true });
+				const previewLines = preview.candidates.length > 0 ? preview.candidates.map(formatPruneCandidate) : [`No prune candidates for scope=${preview.scope} olderThan=${preview.olderThan}.`];
+				if (dryRun) {
+					await presentText(ctx, `tmux-agent prune dry-run (${preview.scope})`, previewLines);
+					return;
+				}
+				if (preview.candidates.length === 0) {
+					if (ctx.hasUI) ctx.ui.notify(previewLines[0], "info");
+					else console.log(previewLines[0]);
+					return;
+				}
+				if (ctx.hasUI) {
+					const ok = await ctx.ui.confirm("tmux-agent prune", `Archive and remove these ${preview.candidates.length} agent(s)?\n\n${previewLines.join("\n")}`);
+					if (!ok) return;
+				}
+				const result = await pruneManagedAgents(ctx, { ...options, olderThan: getStringFlag(parsed, "older-than"), dryRun: false });
+				const summary = `Pruned ${result.pruned.length} agent(s) from scope=${result.scope} olderThan=${result.olderThan}: ${result.pruned.map((status) => status.record.agentId).join(", ")}. Archived to ${registryArchivePath}.`;
+				if (ctx.hasUI) ctx.ui.notify(summary, "info");
+				else console.log(summary);
 				return;
 			}
 			case "debate": {
@@ -3151,6 +3459,9 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		await ensureStateDirs();
 		const currentEnv = getCurrentAgentEnv();
+		if (!currentEnv.agentId) {
+			await pruneManagedAgents(ctx, { scope: "all", olderThan: "1d", dryRun: false, mode: "auto" });
+		}
 		const bridgeAuthority =
 			currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId
 				? await resolveBridgeAuthority(currentEnv.bridgeDir, ctx, { bindIfMissing: true })
@@ -3267,7 +3578,7 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 	pi.registerCommand("tmux-agent", {
 		description: "Spawn and manage long-lived tmux-backed Pi agents",
 		getArgumentCompletions: (prefix) => {
-			const subcommands = ["spawn", "open", "close", "list", "status", "capture", "send", "kill", "tree", "debate", "peer-mode", "peer-list"];
+			const subcommands = ["spawn", "open", "close", "list", "status", "capture", "send", "kill", "tree", "navigate", "prune", "debate", "peer-mode", "peer-list"];
 			const trimmed = prefix.trim();
 			if (!trimmed || !trimmed.includes(" ")) {
 				return subcommands.filter((item) => item.startsWith(trimmed)).map((item) => ({ value: item, label: item }));
@@ -3296,7 +3607,9 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 			"When opening a visual, open a background tab in the current iTerm window without stealing focus when possible.",
 			"For spawn, only set advanced fields like role, agentId, parentAgentId, rootAgentId, notificationMode, and contextBrief when the task really needs them; otherwise rely on defaults.",
 			"When building hierarchies, set role, parentAgentId, and rootAgentId deliberately so the org tree stays understandable.",
+			"Nested orchestrators must behave like control-plane coordinators: keep local helpers data-plane only, avoid repeated impatient nudges, verify child settlement with status, and never close out while a direct tmux child remains unsettled.",
 			"Use report_parent only from the authoritative direct tmux-agent child session for blocker/question/progress/failure updates, and emit exactly one closeout when the task is complete. Local helper subagents are local-only and do not settle the parent bridge. Success settles only after closeout plus child exit.",
+			"List/tree surfaces default to the current session hierarchy; use all-scope views only when you truly need historical or cross-session visibility.",
 			"Use debate_start, debate_send, and debate_close only for explicit peer collaboration. Default peer behavior should remain isolated unless the user asks for cross-peer discussion.",
 		],
 		parameters: TMUX_AGENT_PARAMS,
@@ -3334,10 +3647,12 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 						return buildToolResult(`Closed ${result.closedCount} managed iTerm tab(s) for ${result.agent.agentId}${result.missingCount > 0 ? ` (${result.missingCount} already gone)` : ""}.`, { action: params.action, agent: result.agent, closedCount: result.closedCount, missingCount: result.missingCount });
 					}
 					case "list": {
-						const statuses = await listManagedAgents(params.includeExited ?? true);
+						const scope = inferAgentScope(params.scope, params.rootAgentId ? "root" : "session");
+						const statuses = await listManagedAgents(ctx, { scope, rootAgentId: params.rootAgentId, includeExited: params.includeExited ?? false });
 						const lines = statuses.map(formatAgentSummary);
 						return buildToolResult(lines.join("\n") || "No managed agents recorded.", {
 							action: params.action,
+							scope,
 							agents: statuses.map((status) => ({
 								...status.record,
 								effectiveStatus: status.effectiveStatus,
@@ -3368,8 +3683,36 @@ export default function tmuxAgentExtension(pi: ExtensionAPI) {
 						return buildToolResult(`Killed ${record.agentId}.`, { action: params.action, agent: record });
 					}
 					case "tree": {
-						const lines = await treeManagedAgents();
-						return buildToolResult(lines.join("\n"), { action: params.action, tree: lines });
+						const scope = inferAgentScope(params.scope, params.rootAgentId ? "root" : "session");
+						const tree = await treeManagedAgents(ctx, { scope, rootAgentId: params.rootAgentId, includeExited: params.includeExited ?? false });
+						return buildToolResult(tree.lines.join("\n"), { action: params.action, scope, tree: tree.lines, nodes: tree.nodes });
+					}
+					case "prune": {
+						const scope = inferAgentScope(params.scope, params.rootAgentId ? "root" : "session");
+						const result = await pruneManagedAgents(ctx, { scope, rootAgentId: params.rootAgentId, olderThan: params.olderThan, dryRun: params.dryRun ?? false });
+						const ids = (result.dryRun ? result.candidates : result.pruned).map((status) => status.record.agentId);
+						const summary = result.dryRun
+							? (result.candidates.length === 0
+								? `No prune candidates matched scope=${result.scope} olderThan=${result.olderThan}.`
+								: `Prune dry-run matched ${result.candidates.length} agent(s) for scope=${result.scope} olderThan=${result.olderThan}: ${ids.join(", ")}.`)
+							: (result.pruned.length === 0
+								? `No prune candidates matched scope=${result.scope} olderThan=${result.olderThan}.`
+								: `Pruned ${result.pruned.length} agent(s) from scope=${result.scope} olderThan=${result.olderThan}. Archived to ${registryArchivePath}.`);
+						return buildToolResult(summary, {
+							action: params.action,
+							scope: result.scope,
+							olderThan: result.olderThan,
+							dryRun: result.dryRun,
+							candidateAgentIds: result.candidates.map((status) => status.record.agentId),
+							prunedAgentIds: result.pruned.map((status) => status.record.agentId),
+							archivePath: registryArchivePath,
+							candidates: result.candidates.map((status) => ({
+								agentId: status.record.agentId,
+								status: status.effectiveStatus,
+								recordedStatus: status.record.status,
+								ageReference: status.record.terminatedAt ?? status.record.lastSeenAt ?? status.record.updatedAt ?? status.record.createdAt,
+							})),
+						});
 					}
 					case "report_parent": {
 						if (!params.reportKind) throw new Error("report_parent requires reportKind");

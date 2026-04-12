@@ -30,6 +30,7 @@ Responsibilities:
 - break work into narrow tasks
 - create doers only when necessary
 - review child output before reporting upward
+- wait for direct child settlement instead of pushing repeated impatient nudges
 
 ### Doer
 
@@ -63,6 +64,7 @@ Upward reports should usually contain:
 ### Terminal settlement rules
 
 - Success requires explicit `report_parent` with `reportKind: closeout`, then child exit.
+- An orchestrator must not emit `closeout` while any direct tmux child remains running or otherwise unsettled.
 - Explicit non-success terminal declarations are `failure`, `blocker`, and exited `question`.
 - `progress` is non-terminal and non-follow-up by default.
 - Only the authoritative direct child for a bridge may emit terminal declarations or the authoritative exit signal for that bridge.
@@ -104,6 +106,7 @@ Avoid:
 - large flat swarms with weak ownership
 - vague roles like helper-1 and helper-2
 - frequent noisy status spam
+- repeated impatient nudges to children when no timeout or explicit blocker has been reached
 - using more agents to compensate for poor prompts
 - combining implementation, remediation, and QA in one large agent when correctness matters
 - trusting one completion or failure artifact without checking settled bridge state

@@ -46,14 +46,20 @@ Prefer normal short-lived subagents when the work is brief and does not need its
 - Use `send_message` for downward or lateral instructions rather than inventing unmanaged channels.
 - Use the built-in private launch bridge and bounded report flow for upward child-to-parent reporting.
 - Each bridge belongs to exactly one authoritative direct tmux-agent child session. Ordinary local helpers or subagents inside that child are local-only and must not use `report_parent` or be treated as settled completion.
+- In nested hierarchies, treat orchestrators as control-plane owners: local helpers stay data-plane only, and supervisors should avoid repeated impatient nudges.
 - Child success requires explicit `report_parent` with `reportKind: closeout`, then child exit; success is never inferred from quiet time, capture noise, or last-turn text.
 - `report_parent` kinds are `question | blocker | progress | failure | closeout`.
 - `progress` is non-terminal and non-follow-up by default; it should inform the parent, not settle the run.
 - Bubbling is one hop at a time in nested tmux hierarchies: a chief waits for heads, a head waits for doers, and local helper or subagent completion stays inside the supervising tmux-agent.
+- A tmux orchestrator must not emit `closeout` while any direct tmux child remains running or otherwise unsettled.
 - If a child needs input before finishing, use `report_parent` with `reportKind: question` or `blocker`, a bounded summary, and `requiresResponse: true` when the parent must answer.
 - If a child exits without `closeout` or an explicit non-success terminal declaration, treat it as `protocol_violation` and verify with `status` and `capture` before acting.
 - Treat `close_visual` as best-effort; treat `kill` as the authoritative cleanup step.
 - After harvesting a finished agent's output, clean it up promptly instead of leaving it lingering.
+- `/tmux-agent list` and `/tmux-agent tree` default to the current session hierarchy and hide exited historical agents unless you explicitly ask for broader visibility.
+- Use `/tmux-agent navigate` or the current-session tree plus `/tmux-agent open` to inspect a running node in iTerm.
+- Use `/tmux-agent prune` to preview, confirm, archive, and remove old registry entries when you want long-term registry hygiene.
+- The extension auto-prunes registry entries whose effective state is missing or terminated and whose age is at least 1 day.
 - When the user wants to stop everything using `tmux-agent`, inspect the managed set with `/tmux-agent tree` or `/tmux-agent list` and then kill the managed agents with `/tmux-agent kill`, usually children first and the root last.
 - Do not fall back to raw `tmux kill-session` for normal cleanup when the managed `/tmux-agent` command can do it.
 - Avoid wide, vague swarms. Prefer a small number of clear roles.
@@ -71,6 +77,8 @@ Human command:
 - `/tmux-agent send`
 - `/tmux-agent kill`
 - `/tmux-agent tree`
+- `/tmux-agent navigate`
+- `/tmux-agent prune`
 - `/tmux-agent debate start|send|close`
 - `/tmux-agent peer-mode`
 - `/tmux-agent peer-list`
@@ -136,6 +144,7 @@ Reports upward should be compressed and decision-oriented.
 - Debate modes are `alone`, `all`, `subset`, and `direct`.
 - For hierarchy roots, set `rootAgentId` to the root agent itself.
 - For children, set `parentAgentId` to the direct supervisor and `rootAgentId` to the hierarchy root.
+- When supervising children, wait for explicit child settlement and verify with `status` before you consolidate upward.
 
 ## Examples
 

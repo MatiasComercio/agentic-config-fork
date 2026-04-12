@@ -21,6 +21,7 @@ This is usually better than keeping one broad worker alive across many different
 - use `notificationMode: "notify-and-follow-up"` when phase chaining matters
 - treat `notificationMode: "notify-and-follow-up"` as the settled end-of-session handoff for the child after explicit terminal declaration plus child exit, not as a stage-level or per-turn milestone
 - local helper or ordinary subagent completion inside a tmux-agent is local input only; do not emit `closeout` until the tmux-agent itself has consolidated that work and is ready to stop
+- if the tmux-agent supervises direct tmux children, do not emit `closeout` until those children are explicitly settled and verified with `status`
 - use `open_visual` only when the user explicitly wants live inspection or the running agent is worth monitoring
 - keep one clear mission per agent
 
@@ -101,6 +102,7 @@ When a phase completes:
 8. launch the next phase
 
 The parent should not proceed because of intermediate capture noise, a stage subagent result, a local helper completion, or a partial artifact. Proceed only after settled tmux state is explicit and verified.
+Do not substitute repeated impatient nudges for actual verification or timeout-based escalation.
 
 ## Protocol violation handling
 

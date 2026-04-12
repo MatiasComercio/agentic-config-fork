@@ -1,10 +1,10 @@
 {
-  "extension_sha256": "ffa5ce8bb985268252dfe87c45e26b08f75c55a2f20b7b3bbe4982ceae75d73f",
-  "skill_body_sha256": "c28e2d7496ca80c98499e31aa1ee7837dcd2e736f11d2db249b6fab8b807527c",
+  "extension_sha256": "d87f16f05b3ec5714303d83c20e5eb4cacc566099cea7f44fc122fd6fd8908c5",
   "reference_sha256": {
-    "commands.md": "3d0c37ddeae6ca45da5e75a37932a452f688fd02a8bb5d30bfd7b6f7de457ddf",
-    "orchestration.md": "9d5f1474d6ced00aeb984abd6db141ef23dafe81dbd8711c2a73f6e01d5179a1",
-    "phase-lifecycle.md": "3c350e1cfb616d158d930464540bfd328d6b910acdb826b8ec8878af7d301afb",
+    "commands.md": "b0384dfb0f50c7bba62969b60e73429545b37096715d4f1eb76ba52d7c2ce0ec",
+    "orchestration.md": "dedc276f4643ee32d61f3b33a3dfc5af66d9c730e120f56f9ee2e83616bc5251",
+    "phase-lifecycle.md": "cf6f9c4775e13137d1c2e79e6fd28a993229fc9381f6cc4625dd26aecbf7aa28",
     "roles.md": "f07a07675d4f7cffb51e265553581217c4f866632559bdba7f57c45ddc108f33"
-  }
+  },
+  "skill_body_sha256": "60d5f1607b6a238dc7bc56208c2fdf884636c22db2f95b57e6b01f4932f7d198"
 }
