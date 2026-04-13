@@ -167,4 +167,6 @@ def test_navigation_and_prune_surfaces_are_wired_in_extension_and_docs() -> None
 
     assert '- `navigate`' in commands_text
     assert '- `prune`' in commands_text
+    assert '- `smoke-nested`' in commands_text
     assert 'Auto-prune removes `terminated` or `missing` pimux registry entries aged at least `1d`.' in commands_text
+    assert '/pimux smoke-nested' in commands_text

@@ -7,6 +7,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PIMUX_INDEX = PROJECT_ROOT / ".pi" / "extensions" / "pimux" / "index.ts"
+PIMUX_RENDER = PROJECT_ROOT / ".pi" / "extensions" / "pimux" / "render.ts"
 
 
 def test_parent_runtime_auto_finalizes_terminal_child_reports() -> None:
@@ -51,3 +52,33 @@ def test_parent_runtime_surfaces_parent_to_child_bridge_messages() -> None:
     text = PIMUX_INDEX.read_text()
     assert 'if (event.direction !== "child_to_parent") {' not in text
     assert "if (shouldDeliverBridgeEventToParent(event)) {" in text
+
+
+
+def test_child_inbox_uses_exact_message_content_and_steering_delivery() -> None:
+    """Child delivery should preserve raw payloads and steer queued messages deterministically."""
+    index_text = PIMUX_INDEX.read_text()
+    render_text = PIMUX_RENDER.read_text()
+    assert "const queuedChildInboxEventIds = new Set<string>();" in index_text
+    assert 'pi.sendUserMessage(message, { deliverAs: "steer" });' in index_text
+    assert 'return event.message?.trim() || event.summary?.trim() || "";' in render_text
+
+
+
+def test_kill_runtime_cascades_to_live_descendants_before_parent_termination() -> None:
+    """Killing a parent should recursively terminate live descendants first."""
+    text = PIMUX_INDEX.read_text()
+    assert "function collectDescendantStatuses(" in text
+    assert "async function requestManagedAgentShutdown(" in text
+    assert "async function terminateManagedAgentRecord(" in text
+    assert "terminated because ancestor" in text
+    assert 'event.type === "shutdown_request"' in text
+    assert "shouldShutdownTerminatedAgent" in text
+
+
+
+def test_command_surface_includes_canned_smoke_nested_mode() -> None:
+    """The command surface should expose the canned nested smoke guide mode."""
+    text = PIMUX_INDEX.read_text()
+    assert '"  /pimux smoke-nested [--prefix ID] [--output PATH]"' in text
+    assert 'case "smoke-nested": {' in text

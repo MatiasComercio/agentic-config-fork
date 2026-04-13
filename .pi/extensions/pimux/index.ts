@@ -142,6 +142,7 @@ function buildUsage(): string {
 		"  /pimux send [target|last] <message>",
 		"  /pimux kill [target|last]",
 		"  /pimux prune [--all] [--root ID] [--older-than 7d] [--dry-run]",
+		"  /pimux smoke-nested [--prefix ID] [--output PATH]",
 	].join("\n");
 }
 
@@ -180,6 +181,86 @@ function inferRoleFromPrompt(prompt: string): string | undefined {
 function inferOpenItermFromPrompt(prompt: string): boolean {
 	const text = prompt.toLowerCase();
 	return /\bwatch live\b|\bopen (?:an )?iterm\b|\bshow me\b|\bvisible\b|\binspect live\b|\bopen a tab\b|\bso i can see\b/.test(text);
+}
+
+function buildSmokeNestedPrefix(): string {
+	return `nested-smoke-${nowIso().replace(/[^0-9]/g, "").slice(0, 14)}`;
+}
+
+function buildSmokeNestedGuide(prefix: string): string {
+	const happy = {
+		l1a: `${prefix}-happy-l1a`,
+		l1b: `${prefix}-happy-l1b`,
+		l2a1: `${prefix}-happy-l2a1`,
+		l2a2: `${prefix}-happy-l2a2`,
+		l2b1: `${prefix}-happy-l2b1`,
+		l2b2: `${prefix}-happy-l2b2`,
+	};
+	const blocker = {
+		l1a: `${prefix}-blocker-l1a`,
+		l1b: `${prefix}-blocker-l1b`,
+		l2a1: `${prefix}-blocker-l2a1`,
+		l2a2: `${prefix}-blocker-l2a2`,
+		l2b1: `${prefix}-blocker-l2b1`,
+		l2b2: `${prefix}-blocker-l2b2`,
+	};
+	const proto = {
+		l1a: `${prefix}-proto-l1a`,
+		l1b: `${prefix}-proto-l1b`,
+		l2a1: `${prefix}-proto-l2a1`,
+		l2a2: `${prefix}-proto-l2a2`,
+		l2b1: `${prefix}-proto-l2b1`,
+		l2b2: `${prefix}-proto-l2b2`,
+	};
+	return [
+		`# pimux smoke-nested guide: ${prefix}`,
+		"",
+		"This canned guide uses the simplified scaffold pattern validated during the nested messaging investigation.",
+		"",
+		"## Topology",
+		"- l0: current session",
+		"- l1: 2 scaffolds",
+		"- l2: 2 leaves under each l1",
+		"",
+		"## Happy path IDs",
+		`- ${happy.l1a}`,
+		`- ${happy.l1b}`,
+		`- ${happy.l2a1}`,
+		`- ${happy.l2a2}`,
+		`- ${happy.l2b1}`,
+		`- ${happy.l2b2}`,
+		"",
+		"## Blocker path IDs",
+		`- ${blocker.l1a}`,
+		`- ${blocker.l1b}`,
+		`- ${blocker.l2a1}`,
+		`- ${blocker.l2a2}`,
+		`- ${blocker.l2b1}`,
+		`- ${blocker.l2b2}`,
+		"",
+		"## Protocol-violation path IDs",
+		`- ${proto.l1a}`,
+		`- ${proto.l1b}`,
+		`- ${proto.l2a1}`,
+		`- ${proto.l2a2}`,
+		`- ${proto.l2b1}`,
+		`- ${proto.l2b2}`,
+		"",
+		"## Recommended scaffold approach",
+		"1. Spawn l1 scaffolds with stable IDs.",
+		"2. Let each l1 scaffold spawn its two l2 leaves and report `spawned:<id>`.",
+		"3. Use `send_message` from l0 to each l1 to test l0 -> l1 delivery.",
+		"4. Use `send_message` with `senderAgentId=<l1>` to each l2 to simulate deterministic l1 -> l2 delivery without relying on l1 prompt improvisation.",
+		"5. Verify leaf bridge events and settlement states through `status` plus recent bridge events.",
+		"6. For protocol violation, kill one l2 before any terminal report.",
+		"",
+		"## Verification targets",
+		"- exact payload fidelity in child delivery",
+		"- settled_completion for happy leaves",
+		"- settled_blocked for the intentional blocker leaf",
+		"- protocol_violation for the killed leaf",
+		"- recent bridge events visible in `pimux status` output",
+	].join("\n");
 }
 
 function tokenizeArgs(input: string): string[] {
@@ -511,13 +592,13 @@ async function ensureExitedBridgeEvent(params: {
 	return events;
 }
 
-async function finalizeBridgeAfterForcedTermination(record: ManagedAgentRecord): Promise<void> {
+async function finalizeBridgeAfterForcedTermination(record: ManagedAgentRecord, exitSummary?: string): Promise<void> {
 	const events = await ensureExitedBridgeEvent({
 		bridgeDir: record.bridgeDir,
 		launchId: record.launchId,
 		agentId: record.agentId,
 		sessionName: record.sessionName,
-		exitSummary: `${record.agentId} terminated by parent`,
+		exitSummary: exitSummary ?? `${record.agentId} terminated by parent`,
 	});
 	const settlement = evaluateBridgeSettlement(events);
 	if (settlement.settledState === "running" || !record.bridgeDir) return;
@@ -528,6 +609,72 @@ async function finalizeBridgeAfterForcedTermination(record: ManagedAgentRecord):
 	parentState.terminalFinalizedAt = nowIso();
 	parentState.protocolViolationReason = settlement.protocolViolationReason;
 	await writeBridgeParentState(record.bridgeDir, parentState);
+}
+
+function collectDescendantStatuses(statuses: ResolvedStatus[], parentAgentId: string): ResolvedStatus[] {
+	const byParent = new Map<string, ResolvedStatus[]>();
+	for (const status of statuses) {
+		const parentId = status.record.parentAgentId;
+		if (!parentId) continue;
+		const bucket = byParent.get(parentId) ?? [];
+		bucket.push(status);
+		byParent.set(parentId, bucket);
+	}
+	const descendants: ResolvedStatus[] = [];
+	const visit = (agentId: string) => {
+		for (const child of byParent.get(agentId) ?? []) {
+			visit(child.record.agentId);
+			descendants.push(child);
+		}
+	};
+	visit(parentAgentId);
+	return descendants;
+}
+
+async function requestManagedAgentShutdown(
+	record: ManagedAgentRecord,
+	requesterAgentId: string,
+	sessionFile: string | undefined,
+	summary?: string,
+): Promise<void> {
+	if (!record.bridgeDir || !record.launchId) return;
+	const event = await appendBridgeEvent(record.bridgeDir, {
+		launchId: record.launchId,
+		direction: "parent_to_child",
+		type: "shutdown_request",
+		from: { agentId: requesterAgentId, sessionFile },
+		to: { agentId: record.agentId, sessionName: record.sessionName },
+		summary: summary ?? `Shutdown requested for ${record.agentId}`,
+		message: summary ?? `shutdown:${record.agentId}`,
+	});
+	await writeBridgeEventSignal(record.bridgeDir, event, true);
+}
+
+async function terminateManagedAgentRecord(
+	record: ManagedAgentRecord,
+	stateRoot: string,
+	options: { exitSummary?: string } = {},
+): Promise<ManagedAgentRecord> {
+	if ((record.managedVisuals ?? []).length > 0) {
+		await closeItermTabs(record.managedVisuals ?? []);
+	}
+	if (await tmuxHasSession(record.sessionName).catch(() => false)) {
+		await killTmuxSession(record.sessionName);
+	}
+	const terminatedAt = nowIso();
+	record.status = "terminated";
+	record.terminatedAt = terminatedAt;
+	record.updatedAt = terminatedAt;
+	record.visualMode = "headless";
+	record.managedVisuals = [];
+	record.openCount = 0;
+	await updateRegistry(stateRoot, (next) => {
+		const found = next.agents.find((entry) => entry.agentId === record.agentId);
+		if (found) Object.assign(found, record);
+	});
+	await finalizeBridgeAfterForcedTermination(record, options.exitSummary);
+	await persistAgentManifest(record);
+	return record;
 }
 
 async function finalizeManagedAgentAfterTerminalReport(
@@ -565,26 +712,23 @@ async function killManagedAgent(ctx: ExtensionContext, target: string | undefine
 	const currentEnv = getCurrentEnv();
 	const record = resolveTargetFromInput(registry, target, currentEnv.agentId);
 	if (!record) throw new Error(`Managed agent not found: ${target ?? "(none)"}`);
-	if ((record.managedVisuals ?? []).length > 0) {
-		await closeItermTabs(record.managedVisuals ?? []);
+	const statuses = await resolveStatuses(stateRoot, registry);
+	const descendants = collectDescendantStatuses(statuses, record.agentId)
+		.filter((status) => status.hasSession || status.effectiveStatus === "running" || (status.bridgeSettlementState ?? "running") === "running")
+		.map((status) => status.record);
+	const requesterAgentId = currentEnv.agentId ?? "human";
+	for (const descendant of descendants) {
+		await requestManagedAgentShutdown(
+			descendant,
+			requesterAgentId,
+			ctx.sessionManager.getSessionFile() ?? undefined,
+			`${descendant.agentId} terminated because ancestor ${record.agentId} was killed`,
+		);
+		await terminateManagedAgentRecord(descendant, stateRoot, {
+			exitSummary: `${descendant.agentId} terminated because ancestor ${record.agentId} was killed`,
+		});
 	}
-	if (await tmuxHasSession(record.sessionName).catch(() => false)) {
-		await killTmuxSession(record.sessionName);
-	}
-	const terminatedAt = nowIso();
-	record.status = "terminated";
-	record.terminatedAt = terminatedAt;
-	record.updatedAt = terminatedAt;
-	record.visualMode = "headless";
-	record.managedVisuals = [];
-	record.openCount = 0;
-	await updateRegistry(stateRoot, (next) => {
-		const found = next.agents.find((entry) => entry.agentId === record.agentId);
-		if (found) Object.assign(found, record);
-	});
-	await finalizeBridgeAfterForcedTermination(record);
-	await persistAgentManifest(record);
-	return record;
+	return await terminateManagedAgentRecord(record, stateRoot);
 }
 
 async function sendManagedMessage(request: SendMessageRequest, ctx: ExtensionContext): Promise<ManagedAgentRecord> {
@@ -597,10 +741,11 @@ async function sendManagedMessage(request: SendMessageRequest, ctx: ExtensionCon
 		throw new Error(`Managed agent ${record.agentId} does not have a bridge inbox.`);
 	}
 	const senderAgentId = normalizeOptional(request.senderAgentId) ?? currentEnv.agentId ?? "human";
+	const isAgentRoutedMessage = Boolean(currentEnv.agentId || normalizeOptional(request.senderAgentId));
 	const event = await appendBridgeEvent(record.bridgeDir, {
 		launchId: record.launchId,
 		direction: "parent_to_child",
-		type: currentEnv.agentId ? "instruction" : "answer",
+		type: isAgentRoutedMessage ? "instruction" : "answer",
 		from: { agentId: senderAgentId, sessionFile: ctx.sessionManager.getSessionFile() ?? undefined },
 		to: { agentId: record.agentId, sessionName: record.sessionName },
 		message: request.message,
@@ -890,6 +1035,7 @@ export default function pimuxExtension(pi: ExtensionAPI) {
 	let childBridgeWatcher: FSWatcher | undefined;
 	const processingParentBridges = new Set<string>();
 	let processingChildBridge = false;
+	const queuedChildInboxEventIds = new Set<string>();
 
 	const updateDashboard = async (ctx: ExtensionContext) => {
 		if (!ctx.hasUI) return;
@@ -1008,14 +1154,25 @@ export default function pimuxExtension(pi: ExtensionAPI) {
 			const childState = await readBridgeChildState(currentEnv.bridgeDir);
 			const delivered = new Set(childState.deliveredParentEventIds ?? []);
 			let changed = false;
-			const events = await readBridgeEvents(currentEnv.bridgeDir);
+			const events = (await readBridgeEvents(currentEnv.bridgeDir))
+				.filter((event) => event.direction === "parent_to_child")
+				.sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.eventId.localeCompare(right.eventId));
 			for (const event of events) {
-				if (event.direction !== "parent_to_child" || delivered.has(event.eventId)) continue;
-				const message = buildChildMessageContent(event);
-				if (ctx.isIdle()) {
-					pi.sendUserMessage(message);
-				} else {
-					pi.sendUserMessage(message, { deliverAs: "followUp" });
+				if (delivered.has(event.eventId) || queuedChildInboxEventIds.has(event.eventId)) continue;
+				queuedChildInboxEventIds.add(event.eventId);
+				if (event.type === "shutdown_request") {
+					delivered.add(event.eventId);
+					changed = true;
+					ctx.shutdown();
+					continue;
+				}
+				const message = buildChildMessageContent(event).trim();
+				if (message) {
+					if (ctx.isIdle()) {
+						pi.sendUserMessage(message);
+					} else {
+						pi.sendUserMessage(message, { deliverAs: "steer" });
+					}
 				}
 				delivered.add(event.eventId);
 				changed = true;
@@ -1195,7 +1352,7 @@ export default function pimuxExtension(pi: ExtensionAPI) {
 				console.log(buildUsage());
 				return;
 			}
-			const selected = await ctx.ui.select("pimux", ["spawn", "open", "list", "tree", "navigate", "status", "capture", "send", "kill", "prune"]);
+			const selected = await ctx.ui.select("pimux", ["spawn", "open", "list", "tree", "navigate", "status", "capture", "send", "kill", "prune", "smoke-nested"]);
 			if (!selected) return;
 			await handleCommand(selected, ctx);
 			return;
@@ -1347,6 +1504,17 @@ export default function pimuxExtension(pi: ExtensionAPI) {
 				});
 				return;
 			}
+			case "smoke-nested": {
+				const prefix = getStringFlag(parsed, "prefix") ?? buildSmokeNestedPrefix();
+				const outputPath = path.resolve(getStringFlag(parsed, "output") ?? path.join(ctx.cwd, "tmp", "pimux", `${prefix}.md`));
+				const guide = buildSmokeNestedGuide(prefix);
+				await fs.mkdir(path.dirname(outputPath), { recursive: true });
+				await fs.writeFile(outputPath, `${guide}\n`, "utf-8");
+				const summary = `Wrote pimux smoke-nested guide to ${outputPath}`;
+				if (ctx.hasUI) ctx.ui.notify(summary, "info");
+				else console.log(summary);
+				return;
+			}
 			default:
 				throw new Error(`Unknown pimux subcommand: ${subcommand}\n\n${buildUsage()}`);
 		}
@@ -1359,11 +1527,16 @@ export default function pimuxExtension(pi: ExtensionAPI) {
 		if (!currentEnv.agentId) {
 			await pruneManagedAgents(ctx, { scope: "all", olderThan: "1d", dryRun: false, mode: "auto" });
 		}
+		let shouldShutdownTerminatedAgent = false;
 		if (currentEnv.agentId) {
 			ctx.ui.setStatus(EXTENSION_NAME, `pimux:${currentEnv.agentId}`);
 			await updateRegistry(stateRoot, (registry) => {
 				const existing = registry.agents.find((agent) => agent.agentId === currentEnv.agentId);
 				if (existing) {
+					if (existing.status === "terminated") {
+						shouldShutdownTerminatedAgent = true;
+						return;
+					}
 					existing.status = "running";
 					existing.lastSeenAt = nowIso();
 					existing.updatedAt = existing.lastSeenAt;
@@ -1374,7 +1547,7 @@ export default function pimuxExtension(pi: ExtensionAPI) {
 				}
 			});
 		}
-		if (currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId) {
+		if (currentEnv.bridgeDir && currentEnv.launchId && currentEnv.agentId && !shouldShutdownTerminatedAgent) {
 			const authority = await resolveBridgeAuthority(currentEnv.bridgeDir, ctx, { bindIfMissing: true });
 			if (authority.isAuthoritative) {
 				const launch = await readBridgeLaunch(currentEnv.bridgeDir);
@@ -1391,6 +1564,9 @@ export default function pimuxExtension(pi: ExtensionAPI) {
 		await reconcileParentBridgeWatchers(ctx);
 		await reconcileChildWatcher(ctx);
 		await updateDashboard(ctx);
+		if (shouldShutdownTerminatedAgent) {
+			ctx.shutdown();
+		}
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {

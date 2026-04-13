@@ -92,11 +92,5 @@ export function buildProtocolViolationDeliveryContent(
 }
 
 export function buildChildMessageContent(event: BridgeEvent): string {
-	return [
-		"[pimux parent message]",
-		event.from?.agentId ? `From: ${event.from.agentId}` : undefined,
-		event.summary ? `Summary: ${event.summary}` : undefined,
-		"",
-		event.message?.trim() ?? "",
-	].filter((line): line is string => line !== undefined).join("\n");
+	return event.message?.trim() || event.summary?.trim() || "";
 }

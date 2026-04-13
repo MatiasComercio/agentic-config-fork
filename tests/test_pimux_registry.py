@@ -41,6 +41,11 @@ if (payload.action === "dashboard") {
   process.exit(0);
 }
 
+if (payload.action === "details") {
+  process.stdout.write(JSON.stringify(runtime.formatAgentDetails(payload.status)));
+  process.exit(0);
+}
+
 if (payload.action === "closeout-blockers") {
   process.stdout.write(JSON.stringify(runtime.findBlockingDirectChildrenForCloseout(payload.statuses, payload.agentId)));
   process.exit(0);
@@ -244,3 +249,29 @@ def test_closeout_blockers_require_direct_children_to_reach_settled_completion()
     ]
     result = run_runtime({"action": "closeout-blockers", "statuses": statuses, "agentId": "root-a"})
     assert [item["record"]["agentId"] for item in result] == ["child-blocking"]
+
+
+
+def test_agent_details_include_recent_bridge_events_when_available() -> None:
+    """Status details should expose recent bridge activity without requiring capture polling."""
+    result = run_runtime(
+        {
+            "action": "details",
+            "status": {
+                **status(
+                    "worker-tree-ux",
+                    root_agent_id="root-a",
+                    root_owner_session_key="session-a",
+                    effective_status="missing",
+                    bridge_state="settled_completion",
+                ),
+                "recentBridgeEvents": [
+                    "2026-04-13T14:00:00Z | instruction | planner -> worker-tree-ux | down:worker-tree-ux",
+                    "2026-04-13T14:00:01Z | closeout | worker-tree-ux -> planner | done:down:worker-tree-ux",
+                ],
+            },
+        }
+    )
+    assert "recentBridgeEvents:" in result
+    assert any("instruction | planner -> worker-tree-ux | down:worker-tree-ux" in line for line in result)
+    assert any("closeout | worker-tree-ux -> planner | done:down:worker-tree-ux" in line for line in result)

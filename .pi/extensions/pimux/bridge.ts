@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import type { BridgeAuthorityBinding } from "./authority.ts";
+import { withQueuedFileOperation } from "./file-queue.ts";
 import {
 	DEFAULT_MODEL,
 	DEFAULT_NOTIFICATION_MODE,
@@ -125,6 +126,50 @@ async function appendJsonLine(filePath: string, value: unknown): Promise<void> {
 	await fs.appendFile(filePath, `${JSON.stringify(value)}\n`, "utf-8");
 }
 
+function uniqueStrings(values: Array<string | undefined>): string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const value of values) {
+		if (!value || seen.has(value)) continue;
+		seen.add(value);
+		result.push(value);
+	}
+	return result;
+}
+
+function preferLatestIso(left: string | undefined, right: string | undefined): string | undefined {
+	if (!left) return right;
+	if (!right) return left;
+	return left >= right ? left : right;
+}
+
+function mergeBridgeParentState(current: BridgeParentState, next: BridgeParentState): BridgeParentState {
+	return {
+		...current,
+		...next,
+		deliveredEventIds: uniqueStrings([...(current.deliveredEventIds ?? []), ...(next.deliveredEventIds ?? [])]),
+		terminalEventId: next.terminalEventId ?? current.terminalEventId,
+		terminalFinalizedAt: preferLatestIso(current.terminalFinalizedAt, next.terminalFinalizedAt),
+		terminalState: next.terminalState ?? current.terminalState,
+		protocolViolationReason: next.protocolViolationReason ?? current.protocolViolationReason,
+	};
+}
+
+function mergeBridgeChildState(current: BridgeChildState, next: BridgeChildState): BridgeChildState {
+	return {
+		...current,
+		...next,
+		reportCount: Math.max(current.reportCount ?? 0, next.reportCount ?? 0),
+		deliveredParentEventIds: uniqueStrings([...(current.deliveredParentEventIds ?? []), ...(next.deliveredParentEventIds ?? [])]),
+		authoritativeSessionKey: next.authoritativeSessionKey ?? current.authoritativeSessionKey,
+		authoritativeSessionFile: next.authoritativeSessionFile ?? current.authoritativeSessionFile,
+		authoritativeLeafId: next.authoritativeLeafId ?? current.authoritativeLeafId,
+		authoritativeProcessId: next.authoritativeProcessId ?? current.authoritativeProcessId,
+		authoritativeBoundAt: preferLatestIso(current.authoritativeBoundAt, next.authoritativeBoundAt),
+		lastAuthoritativeSeenAt: preferLatestIso(current.lastAuthoritativeSeenAt, next.lastAuthoritativeSeenAt),
+	};
+}
+
 export async function ensureBridgeDir(bridgeDir: string): Promise<void> {
 	await fs.mkdir(path.join(bridgeDir, "parent"), { recursive: true });
 	await fs.mkdir(path.join(bridgeDir, "child"), { recursive: true });
@@ -166,8 +211,13 @@ export async function readBridgeParentState(bridgeDir: string): Promise<BridgePa
 }
 
 export async function writeBridgeParentState(bridgeDir: string, state: BridgeParentState): Promise<void> {
-	state.updatedAt = nowIso();
-	await writeJsonFileAtomic(getBridgeParentStatePath(bridgeDir), state);
+	const parentStatePath = getBridgeParentStatePath(bridgeDir);
+	await withQueuedFileOperation(parentStatePath, async () => {
+		const current = await readJsonFile<BridgeParentState>(parentStatePath, { deliveredEventIds: [] });
+		const merged = mergeBridgeParentState(current, state);
+		merged.updatedAt = nowIso();
+		await writeJsonFileAtomic(parentStatePath, merged);
+	});
 }
 
 export async function readBridgeChildState(bridgeDir: string): Promise<BridgeChildState> {
@@ -178,8 +228,16 @@ export async function readBridgeChildState(bridgeDir: string): Promise<BridgeChi
 }
 
 export async function writeBridgeChildState(bridgeDir: string, state: BridgeChildState): Promise<void> {
-	state.updatedAt = nowIso();
-	await writeJsonFileAtomic(getBridgeChildStatePath(bridgeDir), state);
+	const childStatePath = getBridgeChildStatePath(bridgeDir);
+	await withQueuedFileOperation(childStatePath, async () => {
+		const current = await readJsonFile<BridgeChildState>(childStatePath, {
+			reportCount: 0,
+			deliveredParentEventIds: [],
+		});
+		const merged = mergeBridgeChildState(current, state);
+		merged.updatedAt = nowIso();
+		await writeJsonFileAtomic(childStatePath, merged);
+	});
 }
 
 export async function readBridgeEvents(bridgeDir: string): Promise<BridgeEvent[]> {
@@ -205,7 +263,10 @@ export async function appendBridgeEvent(
 		timestamp: nowIso(),
 		...event,
 	};
-	await appendJsonLine(getBridgeEventsPath(bridgeDir), fullEvent);
+	const eventsPath = getBridgeEventsPath(bridgeDir);
+	await withQueuedFileOperation(eventsPath, async () => {
+		await appendJsonLine(eventsPath, fullEvent);
+	});
 	return fullEvent;
 }
 
@@ -239,10 +300,17 @@ export async function writeBridgeEventSignal(bridgeDir: string, event: BridgeEve
 }
 
 export async function nextBridgeReportNumber(bridgeDir: string): Promise<number> {
-	const state = await readBridgeChildState(bridgeDir);
-	state.reportCount += 1;
-	await writeBridgeChildState(bridgeDir, state);
-	return state.reportCount;
+	const childStatePath = getBridgeChildStatePath(bridgeDir);
+	return await withQueuedFileOperation(childStatePath, async () => {
+		const state = await readJsonFile<BridgeChildState>(childStatePath, {
+			reportCount: 0,
+			deliveredParentEventIds: [],
+		});
+		state.reportCount = (state.reportCount ?? 0) + 1;
+		state.updatedAt = nowIso();
+		await writeJsonFileAtomic(childStatePath, state);
+		return state.reportCount;
+	});
 }
 
 export async function writeBridgeReport(

@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
-import type { BridgeParentState, SessionBridgeEntry } from "./bridge.ts";
+import type { BridgeEvent, BridgeParentState, SessionBridgeEntry } from "./bridge.ts";
 import { readBridgeEvents, readBridgeParentState } from "./bridge.ts";
+import { withQueuedFileOperation } from "./file-queue.ts";
 import {
 	DEFAULT_NOTIFICATION_MODE,
 	getAgentManifestPath,
@@ -77,6 +79,7 @@ export interface ResolvedStatus {
 	bridgeSettlementState?: BridgeSettlementState;
 	bridgeSettlementFinalizedAt?: string;
 	bridgeProtocolViolationReason?: string;
+	recentBridgeEvents?: string[];
 }
 
 export interface AgentTreeNode {
@@ -192,6 +195,20 @@ function buildTreePrefix(ancestorLastStates: boolean[]): string {
 	return `${branchPrefix}${isLast ? "└─ " : "├─ "}`;
 }
 
+function formatRecentBridgeEvent(event: BridgeEvent): string {
+	const route = event.direction === "parent_to_child"
+		? `${event.from?.agentId ?? "parent"} -> ${event.to?.agentId ?? "child"}`
+		: event.direction === "child_to_parent"
+			? `${event.from?.agentId ?? "child"} -> ${event.to?.agentId ?? "parent"}`
+			: event.from?.agentId ?? "system";
+	const summary = truncate(event.summary ?? event.message ?? event.type, 120);
+	return `${event.timestamp} | ${event.type} | ${route} | ${summary}`;
+}
+
+function formatRecentBridgeEvents(events: BridgeEvent[], limit = 5): string[] {
+	return events.slice(-limit).map(formatRecentBridgeEvent);
+}
+
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
 	try {
 		const content = await fs.readFile(filePath, "utf-8");
@@ -204,7 +221,7 @@ async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
 
 async function writeJsonFileAtomic(filePath: string, data: unknown): Promise<void> {
 	await fs.mkdir(path.dirname(filePath), { recursive: true });
-	const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+	const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
 	await fs.writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
 	await fs.rename(tempPath, filePath);
 }
@@ -266,10 +283,13 @@ export async function updateRegistry(
 	stateRoot: string,
 	mutator: (registry: RegistryFile) => void,
 ): Promise<RegistryFile> {
-	const registry = await readRegistry(stateRoot);
-	mutator(registry);
-	await writeRegistry(stateRoot, registry);
-	return registry;
+	const registryPath = getRegistryPath(stateRoot);
+	return await withQueuedFileOperation(registryPath, async () => {
+		const registry = await readRegistry(stateRoot);
+		mutator(registry);
+		await writeRegistry(stateRoot, registry);
+		return registry;
+	});
 }
 
 export async function readSessionRegistry(stateRoot: string, sessionKey: string): Promise<SessionRegistryFile> {
@@ -287,15 +307,18 @@ export async function rememberSessionBridge(
 	sessionKey: string,
 	entry: Pick<SessionBridgeEntry, "bridgeDir" | "rootAgentId">,
 ): Promise<void> {
-	const sessionRegistry = await readSessionRegistry(stateRoot, sessionKey);
-	if (!sessionRegistry.bridgeDirs.includes(entry.bridgeDir)) {
-		sessionRegistry.bridgeDirs.push(entry.bridgeDir);
-	}
-	if (!sessionRegistry.rootAgentIds.includes(entry.rootAgentId)) {
-		sessionRegistry.rootAgentIds.push(entry.rootAgentId);
-	}
-	sessionRegistry.updatedAt = nowIso();
-	await writeJsonFileAtomic(getSessionRegistryPath(stateRoot, sessionKey), sessionRegistry);
+	const sessionRegistryPath = getSessionRegistryPath(stateRoot, sessionKey);
+	await withQueuedFileOperation(sessionRegistryPath, async () => {
+		const sessionRegistry = await readSessionRegistry(stateRoot, sessionKey);
+		if (!sessionRegistry.bridgeDirs.includes(entry.bridgeDir)) {
+			sessionRegistry.bridgeDirs.push(entry.bridgeDir);
+		}
+		if (!sessionRegistry.rootAgentIds.includes(entry.rootAgentId)) {
+			sessionRegistry.rootAgentIds.push(entry.rootAgentId);
+		}
+		sessionRegistry.updatedAt = nowIso();
+		await writeJsonFileAtomic(sessionRegistryPath, sessionRegistry);
+	});
 }
 
 export async function resolveStatuses(stateRoot: string, registry: RegistryFile): Promise<ResolvedStatus[]> {
@@ -309,6 +332,7 @@ export async function resolveStatuses(stateRoot: string, registry: RegistryFile)
 		let bridgeSettlementState: BridgeSettlementState | undefined;
 		let bridgeSettlementFinalizedAt: string | undefined;
 		let bridgeProtocolViolationReason: string | undefined;
+		let recentBridgeEvents: string[] | undefined;
 		if (record.bridgeDir) {
 			const [parentState, events] = await Promise.all([
 				readBridgeParentState(record.bridgeDir).catch(() => undefined),
@@ -323,6 +347,7 @@ export async function resolveStatuses(stateRoot: string, registry: RegistryFile)
 			bridgeSettlementState ??= bridgeParentState?.terminalState;
 			bridgeSettlementFinalizedAt = bridgeParentState?.terminalFinalizedAt;
 			bridgeProtocolViolationReason ??= bridgeParentState?.protocolViolationReason;
+			recentBridgeEvents = formatRecentBridgeEvents(events);
 		}
 
 		results.push({
@@ -332,6 +357,7 @@ export async function resolveStatuses(stateRoot: string, registry: RegistryFile)
 			bridgeSettlementState,
 			bridgeSettlementFinalizedAt,
 			bridgeProtocolViolationReason,
+			recentBridgeEvents,
 		});
 	}
 	return results;
@@ -354,6 +380,7 @@ export function formatAgentSummary(status: ResolvedStatus, options: { colorize?:
 export function formatAgentDetails(status: ResolvedStatus): string[] {
 	const statusBadge = formatEffectiveStatusBadge(status.effectiveStatus, false);
 	const settlementBadge = formatSettlementBadge(status.bridgeSettlementState, false);
+	const recentBridgeEvents = status.recentBridgeEvents ?? [];
 	return [
 		`label: ${buildAgentLabel(status.record)}`,
 		`agentId: ${status.record.agentId}`,
@@ -362,6 +389,8 @@ export function formatAgentDetails(status: ResolvedStatus): string[] {
 		`bridgeSettlementState: ${status.bridgeSettlementState ?? "running"}${settlementBadge ? ` | ${settlementBadge}` : ""}`,
 		status.bridgeSettlementFinalizedAt ? `bridgeSettlementFinalizedAt: ${status.bridgeSettlementFinalizedAt}` : undefined,
 		status.bridgeProtocolViolationReason ? `bridgeProtocolViolationReason: ${status.bridgeProtocolViolationReason}` : undefined,
+		recentBridgeEvents.length > 0 ? "recentBridgeEvents:" : undefined,
+		...recentBridgeEvents.map((event) => `  - ${event}`),
 		status.record.role ? `role: ${status.record.role}` : undefined,
 		status.record.goal ? `goal: ${status.record.goal}` : undefined,
 		status.record.parentAgentId ? `parent: ${status.record.parentAgentId}` : undefined,
@@ -614,5 +643,8 @@ export async function archivePrunedAgents(
 }
 
 export async function writeAgentManifest(record: ManagedAgentRecord): Promise<void> {
-	await writeJsonFileAtomic(getAgentManifestPath(path.resolve(record.runDir, "..", ".."), record.agentId), record);
+	const manifestPath = getAgentManifestPath(path.resolve(record.runDir, "..", ".."), record.agentId);
+	await withQueuedFileOperation(manifestPath, async () => {
+		await writeJsonFileAtomic(manifestPath, record);
+	});
 }

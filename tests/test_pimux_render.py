@@ -24,6 +24,11 @@ if (payload.action === "render") {
   process.exit(0);
 }
 
+if (payload.action === "child-message") {
+  process.stdout.write(runtime.buildChildMessageContent(payload.event));
+  process.exit(0);
+}
+
 throw new Error(`Unsupported action: ${payload.action}`);
 """.strip()
 
@@ -80,3 +85,22 @@ def test_parent_delivery_content_shows_bridge_route_for_outbound_messages() -> N
     assert "Route: planner -> worker" in content
     assert "Summary: Inspect render.ts" in content
     assert "Message: Inspect render.ts and report the user-visible message flow." in content
+
+
+def test_child_delivery_content_preserves_exact_parent_payload() -> None:
+    """Child-side delivery should expose the raw parent payload without wrapper text."""
+    content = run_render(
+        {
+            "action": "child-message",
+            "event": {
+                "direction": "parent_to_child",
+                "type": "instruction",
+                "from": {"agentId": "planner"},
+                "to": {"agentId": "worker"},
+                "summary": "Inspect render.ts",
+                "message": "down:nested-test:l2a1",
+            },
+        }
+    )
+
+    assert content == "down:nested-test:l2a1"

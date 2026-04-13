@@ -14,6 +14,7 @@ Use `/pimux` with:
 - `send`
 - `kill`
 - `prune`
+- `smoke-nested`
 
 ## Tool
 
@@ -77,3 +78,11 @@ After a terminal `report_parent`, the pimux runtime should finalize the managed 
 - `prune --dry-run` to preview historical cleanup candidates
 
 Auto-prune removes `terminated` or `missing` pimux registry entries aged at least `1d`.
+
+## Canned smoke guide
+
+```text
+/pimux smoke-nested
+```
+
+Writes a deterministic nested smoke-test guide under `tmp/pimux/` with stable ID patterns and the simplified scaffold flow used for routing and settlement checks.
