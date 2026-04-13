@@ -53,6 +53,7 @@ import {
 	resolveStatuses,
 	resolveTargetFromInput,
 	shouldPruneStatus,
+	suggestSupervisorTerminalReportKind,
 	uniqueAgentIdentity,
 	updateRegistry,
 	type AgentScope,
@@ -212,6 +213,11 @@ function buildSmokeNestedGuide(prefix: string): string {
 		l2b1: `${prefix}-proto-l2b1`,
 		l2b2: `${prefix}-proto-l2b2`,
 	};
+	const cascade = {
+		supervisor: `${prefix}-cascade-supervisor`,
+		parent: `${prefix}-cascade-parent`,
+		descendant: `${prefix}-cascade-descendant`,
+	};
 	return [
 		`# pimux smoke-nested guide: ${prefix}`,
 		"",
@@ -246,19 +252,34 @@ function buildSmokeNestedGuide(prefix: string): string {
 		`- ${proto.l2b1}`,
 		`- ${proto.l2b2}`,
 		"",
+		"## Cascade-kill path IDs",
+		`- ${cascade.supervisor}`,
+		`- ${cascade.parent}`,
+		`- ${cascade.descendant}`,
+		"",
 		"## Recommended scaffold approach",
 		"1. Spawn l1 scaffolds with stable IDs.",
 		"2. Let each l1 scaffold spawn its two l2 leaves and report `spawned:<id>`.",
 		"3. Use `send_message` from l0 to each l1 to test l0 -> l1 delivery.",
 		"4. Use `send_message` with `senderAgentId=<l1>` to each l2 to simulate deterministic l1 -> l2 delivery without relying on l1 prompt improvisation.",
 		"5. Verify leaf bridge events and settlement states through `status` plus recent bridge events.",
-		"6. For protocol violation, kill one l2 before any terminal report.",
+		"6. For blocker scenarios, let the wrapper report `blocker` and exit after all direct children reach terminal states.",
+		"7. For protocol-violation scenarios, kill one l2 before any terminal report, then let the wrapper report `failure` and exit after capturing the leaf verdict.",
+		"8. For cascade-kill validation, use a supervisor that kills a disposable parent+descendant pair, verifies the descendant shutdown, then exits cleanly itself.",
+		"",
+		"## Wrapper exit rules",
+		"- use `closeout` only when every direct child is `settled_completion`",
+		"- use `question` when a direct child settled `settled_waiting_on_parent`",
+		"- use `blocker` when a direct child settled `settled_blocked`",
+		"- use `failure` when a direct child settled `settled_failure` or `protocol_violation`",
+		"- do not make the wrapper itself the killed parent in a cascade test; kill a disposable child-parent pair under the wrapper instead",
 		"",
 		"## Verification targets",
 		"- exact payload fidelity in child delivery",
 		"- settled_completion for happy leaves",
 		"- settled_blocked for the intentional blocker leaf",
 		"- protocol_violation for the killed leaf",
+		"- clean wrapper exits without manual teardown where the wrapper is not itself the object under test",
 		"- recent bridge events visible in `pimux status` output",
 	].join("\n");
 }
@@ -783,7 +804,14 @@ async function reportParent(
 		const blocking = findBlockingDirectChildrenForCloseout(statuses, currentEnv.agentId);
 		if (blocking.length > 0) {
 			const details = blocking.map((status) => `${status.record.agentId} [status=${status.effectiveStatus}, settled=${status.bridgeSettlementState ?? "running"}]`).join(", ");
-			throw new Error(`Cannot close out ${currentEnv.agentId}: direct pimux children must be settled_completion first. Blocking children: ${details}`);
+			const suggestedKind = suggestSupervisorTerminalReportKind(statuses, currentEnv.agentId);
+			const guidance =
+				suggestedKind && suggestedKind !== "closeout"
+					? `Suggested terminal report: ${suggestedKind}. Use report_parent(${suggestedKind}) if these child outcomes are intentional.`
+					: "Wait for unsettled children to reach terminal settlement before using report_parent(closeout).";
+			throw new Error(
+				`Cannot close out ${currentEnv.agentId}: direct pimux children must be settled_completion first. Blocking children: ${details}. ${guidance}`,
+			);
 		}
 	}
 	let reportPath: string | undefined;

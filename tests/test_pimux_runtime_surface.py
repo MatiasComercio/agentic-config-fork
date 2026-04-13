@@ -8,6 +8,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PIMUX_INDEX = PROJECT_ROOT / ".pi" / "extensions" / "pimux" / "index.ts"
 PIMUX_RENDER = PROJECT_ROOT / ".pi" / "extensions" / "pimux" / "render.ts"
+PIMUX_REGISTRY = PROJECT_ROOT / ".pi" / "extensions" / "pimux" / "registry.ts"
 
 
 def test_parent_runtime_auto_finalizes_terminal_child_reports() -> None:
@@ -82,3 +83,17 @@ def test_command_surface_includes_canned_smoke_nested_mode() -> None:
     text = PIMUX_INDEX.read_text()
     assert '"  /pimux smoke-nested [--prefix ID] [--output PATH]"' in text
     assert 'case "smoke-nested": {' in text
+    assert '"## Wrapper exit rules"' in text
+    assert '"- use `failure` when a direct child settled `settled_failure` or `protocol_violation`"' in text
+    assert '"- do not make the wrapper itself the killed parent in a cascade test; kill a disposable child-parent pair under the wrapper instead"' in text
+
+
+
+def test_closeout_guard_suggests_non_success_terminal_reports_for_wrappers() -> None:
+    """Supervisors should get actionable guidance when closeout is blocked by non-success child outcomes."""
+    index_text = PIMUX_INDEX.read_text()
+    registry_text = PIMUX_REGISTRY.read_text()
+    assert "suggestSupervisorTerminalReportKind" in registry_text
+    assert 'Suggested terminal report: ${suggestedKind}.' in index_text
+    assert 'Use report_parent(${suggestedKind}) if these child outcomes are intentional.' in index_text
+    assert 'Wait for unsettled children to reach terminal settlement before using report_parent(closeout).' in index_text

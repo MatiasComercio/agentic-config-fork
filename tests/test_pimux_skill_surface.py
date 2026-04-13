@@ -29,6 +29,8 @@ def test_core_skill_requires_explicit_messaging_settlement_and_trigger_commitmen
     assert "Only the authoritative direct child session for a bridge may call `report_parent`." in protocol
     assert "that trigger is a runtime commitment, not a suggestion." in protocol
     assert "Default supervision is scoped to the current session hierarchy." in protocol
+    assert "the supervising wrapper should propagate the matching terminal kind and exit cleanly instead of forcing `closeout` or relying on manual kill" in protocol
+    assert "For cascade-kill testing, keep the wrapper alive and kill a disposable child parent/descendant pair under it rather than making the wrapper itself the killed parent." in protocol
 
 
 def test_commands_reference_exposes_minimal_surface() -> None:

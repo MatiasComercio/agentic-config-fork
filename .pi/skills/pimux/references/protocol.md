@@ -31,6 +31,14 @@ The child should not keep chatting or continue work after emitting a terminal re
 
 If a child spawns direct pimux children, it must not emit `closeout` until every direct pimux child is `settled_completion`.
 
+When direct child outcomes are intentionally non-success, the supervising wrapper should propagate the matching terminal kind and exit cleanly instead of forcing `closeout` or relying on manual kill:
+
+- `settled_waiting_on_parent` -> `question`
+- `settled_blocked` -> `blocker`
+- `settled_failure` or `protocol_violation` -> `failure`
+
+For cascade-kill testing, keep the wrapper alive and kill a disposable child parent/descendant pair under it rather than making the wrapper itself the killed parent.
+
 ## Explicit skill-trigger rule
 
 When the parent session entered this family through an explicit `pimux`, `pimux-mux`, `pimux-ospec`, or `pimux-roadmap` skill trigger, that trigger is a runtime commitment, not a suggestion.

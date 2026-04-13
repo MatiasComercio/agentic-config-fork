@@ -567,6 +567,24 @@ export function findBlockingDirectChildrenForCloseout(
 	return directChildren.filter((status) => status.bridgeSettlementState !== "settled_completion");
 }
 
+export function suggestSupervisorTerminalReportKind(
+	statuses: ResolvedStatus[],
+	agentId: string,
+): "question" | "blocker" | "failure" | "closeout" | undefined {
+	const directChildren = statuses.filter((status) => status.record.parentAgentId === agentId);
+	if (directChildren.length === 0) return "closeout";
+	if (directChildren.some((status) => !isSettledTerminalState(status.bridgeSettlementState))) return undefined;
+	if (directChildren.some((status) => status.bridgeSettlementState === "settled_waiting_on_parent")) return "question";
+	if (
+		directChildren.some(
+			(status) => status.bridgeSettlementState === "settled_failure" || status.bridgeSettlementState === "protocol_violation",
+		)
+	)
+		return "failure";
+	if (directChildren.some((status) => status.bridgeSettlementState === "settled_blocked")) return "blocker";
+	return "closeout";
+}
+
 export function findUnsettledDirectChildren(statuses: ResolvedStatus[], agentId: string): ResolvedStatus[] {
 	const directChildren = statuses.filter((status) => status.record.parentAgentId === agentId);
 	return directChildren.filter((status) => !isSettledTerminalState(status.bridgeSettlementState));

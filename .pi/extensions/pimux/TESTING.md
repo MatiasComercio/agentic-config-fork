@@ -13,8 +13,8 @@ pytest -q tests/test_pimux_*.py
 Latest observed result:
 
 - Date: 2026-04-13
-- Commit: `66ebaab`
-- Result: `42 passed in 2.07s`
+- Result: `44 passed in 2.29s`
+- Notes: includes the wrapper clean-exit guidance follow-up checks
 
 ## Automated test coverage
 
@@ -106,8 +106,15 @@ When modifying files under `.pi/extensions/pimux/`, the minimum expected validat
 3. if the change touches routing, settlement, shutdown, or nested orchestration behavior, run at least one real live smoke scenario with headless agents
 4. record any important new runtime findings in a local `tmp/` artifact during investigation, then update this document if the persistent validation story changes
 
-## Known validation nuance
+## Wrapper clean-exit guidance
 
-The fresh full smoke confirmed the target routing and settlement behaviors, but some scenario wrapper agents were manually torn down after the leaf verdicts were captured. That means the wrapper agent for a scenario may still show `protocol_violation` even when the intended leaf-level assertion passed.
+The latest fresh full smoke confirmed the target routing and settlement behaviors, but some scenario wrapper agents were manually torn down after the leaf verdicts were captured. That means a wrapper agent for a scenario may still show `protocol_violation` even when the intended leaf-level assertion passed.
 
-That wrapper clean-exit behavior should be kept improving, but it does not invalidate the validated leaf-level results listed above.
+Use this mapping going forward so wrappers exit cleanly whenever the wrapper itself is not the thing being killed for the test:
+
+- all direct children `settled_completion` -> wrapper emits `closeout`
+- any direct child `settled_waiting_on_parent` -> wrapper emits `question`
+- any direct child `settled_blocked` -> wrapper emits `blocker`
+- any direct child `settled_failure` or `protocol_violation` -> wrapper emits `failure`
+
+For cascade-kill validation, let a supervising wrapper kill a disposable parent/descendant pair and verify the descendant shutdown, then let the wrapper itself exit cleanly.

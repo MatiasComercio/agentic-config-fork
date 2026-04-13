@@ -51,6 +51,11 @@ if (payload.action === "closeout-blockers") {
   process.exit(0);
 }
 
+if (payload.action === "terminal-kind-suggestion") {
+  process.stdout.write(JSON.stringify(runtime.suggestSupervisorTerminalReportKind(payload.statuses, payload.agentId) ?? null));
+  process.exit(0);
+}
+
 throw new Error(`Unsupported action: ${payload.action}`);
 """.strip()
 
@@ -249,6 +254,83 @@ def test_closeout_blockers_require_direct_children_to_reach_settled_completion()
     ]
     result = run_runtime({"action": "closeout-blockers", "statuses": statuses, "agentId": "root-a"})
     assert [item["record"]["agentId"] for item in result] == ["child-blocking"]
+
+
+
+def test_supervisor_terminal_kind_guidance_matches_direct_child_outcomes() -> None:
+    """Supervisors should get a deterministic non-success terminal suggestion when children settle non-successfully."""
+    waiting = run_runtime(
+        {
+            "action": "terminal-kind-suggestion",
+            "agentId": "root-a",
+            "statuses": [
+                status("root-a", root_agent_id="root-a", root_owner_session_key="session-a"),
+                status(
+                    "child-question",
+                    root_agent_id="root-a",
+                    root_owner_session_key="session-a",
+                    parent_agent_id="root-a",
+                    effective_status="missing",
+                    bridge_state="settled_waiting_on_parent",
+                ),
+            ],
+        }
+    )
+    blocked = run_runtime(
+        {
+            "action": "terminal-kind-suggestion",
+            "agentId": "root-a",
+            "statuses": [
+                status("root-a", root_agent_id="root-a", root_owner_session_key="session-a"),
+                status(
+                    "child-blocked",
+                    root_agent_id="root-a",
+                    root_owner_session_key="session-a",
+                    parent_agent_id="root-a",
+                    effective_status="missing",
+                    bridge_state="settled_blocked",
+                ),
+            ],
+        }
+    )
+    failed = run_runtime(
+        {
+            "action": "terminal-kind-suggestion",
+            "agentId": "root-a",
+            "statuses": [
+                status("root-a", root_agent_id="root-a", root_owner_session_key="session-a"),
+                status(
+                    "child-broken",
+                    root_agent_id="root-a",
+                    root_owner_session_key="session-a",
+                    parent_agent_id="root-a",
+                    effective_status="terminated",
+                    bridge_state="protocol_violation",
+                ),
+            ],
+        }
+    )
+    unsettled = run_runtime(
+        {
+            "action": "terminal-kind-suggestion",
+            "agentId": "root-a",
+            "statuses": [
+                status("root-a", root_agent_id="root-a", root_owner_session_key="session-a"),
+                status(
+                    "child-running",
+                    root_agent_id="root-a",
+                    root_owner_session_key="session-a",
+                    parent_agent_id="root-a",
+                    bridge_state="running",
+                ),
+            ],
+        }
+    )
+
+    assert waiting == "question"
+    assert blocked == "blocker"
+    assert failed == "failure"
+    assert unsettled is None
 
 
 
